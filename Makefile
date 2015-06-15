@@ -1639,6 +1639,14 @@ musl += crypt/crypt_r.o
 musl += crypt/crypt_sha256.o
 musl += crypt/crypt_sha512.o
 
+libc += aio/aio_cancel.o
+libc += aio/aio_error.o
+libc += aio/aio_fsync.o
+libc += aio/aio_readwrite.o
+libc += aio/aio_return.o
+libc += aio/aio_suspend.o
+libc += aio/lio_listio.o
+
 #include $(src)/fs/build.mk:
 
 fs :=
