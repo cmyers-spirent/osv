@@ -402,22 +402,29 @@ device_write(struct device *dev, struct uio *uio, int ioflags)
 /*
  * device_ioctl - I/O control request.
  *
- * A command and its argument are completely device dependent.
+ * A command and its argument are mostly device dependent.
  * The ioctl routine of each driver must validate the user buffer
  * pointed by the arg value.
  */
+
+int device_ioctl_common(struct device *dev, u_long cmd, void *arg);
+
 int
 device_ioctl(struct device *dev, u_long cmd, void *arg)
 {
 	struct devops *ops;
-	int error;
+	int error = 0;
 
 	if ((error = device_reference(dev)) != 0)
 		return error;
 
-	ops = dev->driver->devops;
-	assert(ops->ioctl != NULL);
-	error = (*ops->ioctl)(dev, cmd, arg);
+	/* Device independent ioctl? */
+	if ((error = device_ioctl_common(dev, cmd, arg)) == -EINVAL) {
+		/* Nope; hand off to the driver */
+		ops = dev->driver->devops;
+		assert(ops->ioctl != NULL);
+		error = (*ops->ioctl)(dev, cmd, arg);
+	}
 
 	device_release(dev);
 	return error;
