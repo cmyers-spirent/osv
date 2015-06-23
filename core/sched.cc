@@ -391,6 +391,7 @@ void cpu::send_wakeup_ipi()
 void cpu::do_idle()
 {
     do {
+#if 0
         idle_poll_lock_type idle_poll_lock{*this};
         WITH_LOCK(idle_poll_lock) {
             // spin for a bit before halting
@@ -402,6 +403,7 @@ void cpu::do_idle()
                 }
             }
         }
+#endif
         std::unique_lock<irq_lock_type> guard(irq_lock);
         handle_incoming_wakeups();
         if (!runqueue.empty()) {

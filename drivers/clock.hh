@@ -98,7 +98,7 @@ public:
      *
      * Not all clocks are required to implement it.
      */
-    virtual u64 processor_to_nano(u64 ticks) { return 0; }
+    virtual u64 processor_to_nano(u64 ticks) { (void)ticks; return 0; }
 private:
     static clock* _c;
 };
