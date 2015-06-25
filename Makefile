@@ -781,6 +781,8 @@ drivers += drivers/ahci.o
 drivers += drivers/ide.o
 drivers += drivers/scsi-common.o
 drivers += drivers/vmw-pvscsi.o
+drivers += drivers/cpu-steal.o
+drivers += drivers/kvmsteal.o
 endif # x64
 
 ifeq ($(arch),aarch64)

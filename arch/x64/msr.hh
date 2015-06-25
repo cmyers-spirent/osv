@@ -64,7 +64,7 @@ enum class msr : uint32_t {
     KVM_SYSTEM_TIME = 0x12,
     KVM_WALL_CLOCK_NEW = 0x4b564d00,
     KVM_SYSTEM_TIME_NEW = 0x4b564d01,
-
+    KVM_STEAL_TIME = 0x4b564d03,
 };
 
 namespace processor {

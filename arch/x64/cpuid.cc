@@ -61,6 +61,7 @@ cpuid_bit cpuid_bits[] = {
     { 0x80000007, 'd', 8, &f::invariant_tsc, 0, nullptr, "invariant_tsc"},
     { 0x40000001, 'a', 0, &f::kvm_clocksource, 0, &kvm_signature, "kvmclock" },
     { 0x40000001, 'a', 3, &f::kvm_clocksource2, 0, &kvm_signature, "kvmclock2" },
+    { 0x40000001, 'a', 5, &f::kvm_steal_time, 0, &kvm_signature, "kvm_steal_time" },
     { 0x40000001, 'a', 6, &f::kvm_pv_eoi, 0, &kvm_signature, "kvm_pv_eoi" },
     { 0x40000001, 'a', 24, &f::kvm_clocksource_stable, 0, &kvm_signature, "kvmclock_stable" },
 };

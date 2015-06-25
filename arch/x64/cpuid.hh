@@ -33,6 +33,7 @@ struct features_type {
     bool kvm_clocksource;
     bool kvm_clocksource2;
     bool kvm_clocksource_stable;
+    bool kvm_steal_time;
     bool kvm_pv_eoi;
     bool xen_clocksource;
     bool xen_vector_callback;
