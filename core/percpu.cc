@@ -29,7 +29,14 @@ size_t dynamic_percpu_base()
 size_t dynamic_percpu_alloc(size_t size, size_t align)
 {
     std::lock_guard<mutex> guard(mtx);
-    for (size_t i = 0; i < dynamic_percpu_max; i += align) {
+
+    /* Find the first value in the bitmap that has the necessary alignment */
+    auto percpu_base = dynamic_percpu_base();
+    auto align_base = percpu_base % align
+        ? ((percpu_base + (align - 1)) & ~(align - 1)) - percpu_base
+        : 0;
+
+    for (size_t i = align_base; i < dynamic_percpu_max; i += align) {
         size_t j = 0;
         for (; j < size; ++j) {
             if (dynamic_percpu_allocated.test(i + j)) {
@@ -54,4 +61,3 @@ void dynamic_percpu_free(size_t offset, size_t size)
         dynamic_percpu_allocated.set(offset + j, false);
     }
 }
-
