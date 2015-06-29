@@ -282,10 +282,16 @@ static int bio_queue_strategy(struct aio_op *op)
 {
     struct aiocb *cb = op->cb;
 
+    if (file_type(op->file) != DTYPE_VNODE)
+        return -1;
+
     /* do a little pointer walking */
     auto d = file_dentry(op->file);
     auto vp = d->d_vnode;
     auto dev = static_cast<struct device *>(vp->v_data);
+
+    if (vp->v_type != VBLK)
+        return -1;
 
     auto bio = alloc_bio();
     if (!bio)
@@ -319,11 +325,9 @@ static int queue_aio_op(struct aio_op *op)
 {
     int error = 0;
 
-    switch (file_type(op->file)) {
-    case DTYPE_VNODE:
-        error = bio_queue_strategy(op);
-        break;
-    default:
+    /* try to queue directly */
+    if ((error = bio_queue_strategy(op)) != 0) {
+        /* otherwise, fall back to default queueing strategy */
         error = default_queue_strategy(op);
     }
 
