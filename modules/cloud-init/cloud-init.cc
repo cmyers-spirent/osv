@@ -196,7 +196,10 @@ void osvinit::load_url(const std::string& server, const std::string& path,
 
 void osvinit::load_from_cloud(bool ignore_missing_source)
 {
-    if (!_force_probe && osv::hypervisor() != osv::hypervisor_type::xen && osv::firmware_vendor() != "Google") {
+    if (!_force_probe
+        && osv::hypervisor() != osv::hypervisor_type::xen
+        && osv::firmware_vendor() != "Google"
+        && osv::hypervisor() != osv::hypervisor_type::vmware_esxi) {
         return;
     }
 

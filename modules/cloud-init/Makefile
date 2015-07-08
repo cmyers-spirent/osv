@@ -21,11 +21,13 @@ INCLUDES += -I$(HTTPSERVER_DIR)
 # the build target executable:
 TARGET = cloud-init
 CPP_FILES := client.cc cloud-init.cc data-source.cc main.cc template.cc cassandra-module.cc json.cc
+CPP_FILES += ovf-data-source.cc
 OBJ_FILES := $(addprefix obj/,$(CPP_FILES:.cc=.o))
 DEPS := $(OBJ_FILES:.o=.d)
 
 STUB_HTTPSERVER_LIBS = $(HTTPSERVER_DIR)/httpserver-stub.so
 LIBS = -lpthread $(boost-libs) $(DEPEDNDS_LIBS) -lyaml-cpp -L$(HTTPSERVER_DIR)/ -lhttpserver -L$(boost-lib-dir)
+LIBS += -lvmtools
 
 quiet = $(if $V, $1, @echo " $2"; $1)
 very-quiet = $(if $V, $1, @$1)
@@ -49,6 +51,8 @@ $(TARGET).so: $(OBJ_FILES)
 
 obj/%.o: %.cc
 	$(call quiet, $(CXX) $(CXXFLAGS) -c -o $@ $<, CXX $@)
+
+obj/ovf-data-source.o: CXXFLAGS += -DHAVE_STDINT_H
 
 clean:
 	$(call quiet, $(RM) $(TARGET), CLEAN)

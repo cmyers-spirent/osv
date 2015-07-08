@@ -9,6 +9,7 @@
 
 #include "client.hh"
 #include "data-source.hh"
+#include "ovf-data-source.hh"
 
 #include <osv/debug.hh>
 #include <osv/exception_utils.hh>
@@ -143,7 +144,7 @@ public:
     }
 };
 
-static std::vector<data_source*> data_sources = { new ec2(), new gce() };
+static std::vector<data_source*> data_sources = { new ec2(), new gce(), new ovf() };
 
 static data_source& probe(data_source& ds) {
     debug("Probing " + ds.get_name() + " ...\n");
