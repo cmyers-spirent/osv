@@ -557,6 +557,7 @@ bsd += bsd/sys/netinet/arpcache.o
 bsd += bsd/sys/xdr/xdr.o
 bsd += bsd/sys/xdr/xdr_array.o
 bsd += bsd/sys/xdr/xdr_mem.o
+bsd += bsd/sys/xdr/xdr_reference.o
 
 ifeq ($(arch),x64)
 $(out)/bsd/%.o: COMMON += -DXEN -DXENHVM
