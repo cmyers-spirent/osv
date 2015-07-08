@@ -96,6 +96,16 @@ void process_cpuid_bit(features_type& features, const cpuid_bit& b)
     features.*(b.flag) = (w >> b.bit) & 1;
 }
 
+void process_vmware_bits(features_type &features)
+{
+    signature sig = { 0x61774d56, 0x4d566572, 0x65726177 };  /* VMwareVMware */
+
+    auto x = cpuid(0x40000000);
+    if (x.b == sig.b && x.c == sig.c && x.d == sig.d) {
+        features.vmware = true;
+    }
+}
+
 void process_xen_bits(features_type &features)
 {
     signature sig = { 0x566e6558, 0x65584d4d, 0x4d4d566e };
@@ -115,6 +125,7 @@ void process_cpuid(features_type& features)
     for (unsigned i = 0; i < nr_cpuid_bits; ++i) {
         process_cpuid_bit(features, cpuid_bits[i]);
     }
+    process_vmware_bits(features);
     process_xen_bits(features);
 }
 
