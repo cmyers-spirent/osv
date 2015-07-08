@@ -32,3 +32,5 @@ modules/httpserver-jolokia-plugin/obj/
 modules/httpserver-jvm-plugin/autogen/
 modules/httpserver-jvm-plugin/jvm.so
 modules/httpserver-jvm-plugin/obj/
+modules/cloud-init/cloud-init.so
+modules/cloud-init/obj/
