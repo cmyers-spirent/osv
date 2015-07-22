@@ -13,12 +13,8 @@
 #include <osv/debug.hh>
 #include <osv/irqlock.hh>
 #include <osv/align.hh>
-
-#ifndef AARCH64_PORT_STUB
 #include <osv/interrupt.hh>
-#endif /* !AARCH64_PORT_STUB */
-
-#include "smp.hh"
+#include <smp.hh>
 #include "osv/trace.hh"
 #include <osv/percpu.hh>
 #include <osv/prio.hh>
@@ -77,9 +73,7 @@ bool __thread need_reschedule = false;
 
 elf::tls_data tls;
 
-#ifndef AARCH64_PORT_STUB
-inter_processor_interrupt wakeup_ipi{[] {}};
-#endif /* !AARCH64_PORT_STUB */
+inter_processor_interrupt wakeup_ipi{IPI_WAKEUP, [] {}};
 
 constexpr float cmax = 0x1P63;
 constexpr float cinitial = 0x1P-63;
@@ -379,13 +373,11 @@ void cpu::idle_poll_end()
 
 void cpu::send_wakeup_ipi()
 {
-#ifndef AARCH64_PORT_STUB
     std::atomic_thread_fence(std::memory_order_seq_cst);
     if (!idle_poll.load(std::memory_order_relaxed) && runqueue.size() <= 1) {
         trace_sched_ipi(id);
         wakeup_ipi.send(this);
     }
-#endif /* !AARCH64_PORT_STUB */
 }
 
 void cpu::do_idle()
@@ -419,6 +411,11 @@ void start_early_threads();
 
 void cpu::idle()
 {
+    // The idle thread must not sleep, because the whole point is that the
+    // scheduler can always find at least one runnable thread.
+    // We set preempt_disable just to help us verify this.
+    preempt_disable();
+
     if (id == 0) {
         start_early_threads();
     }
@@ -1172,7 +1169,7 @@ void thread::timer_fired()
     wake();
 }
 
-unsigned int thread::id()
+unsigned int thread::id() const
 {
     return _id;
 }
@@ -1401,18 +1398,22 @@ void init_detached_threads_reaper()
 
 void start_early_threads()
 {
-    WITH_LOCK(thread_map_mutex) {
-        for (auto th : thread_map) {
-            thread *t = th.second;
-            if (t == sched::thread::current()) {
-                continue;
-            }
-            t->remote_thread_local_var(s_current) = t;
-            thread::status expected = thread::status::prestarted;
-            if (t->_detached_state->st.compare_exchange_strong(expected,
+    // We're called from the idle thread, which must not sleep, hence this
+    // strange try_lock() loop instead of just a lock().
+    while (!thread_map_mutex.try_lock()) {
+        cpu::schedule();
+    }
+    SCOPE_ADOPT_LOCK(thread_map_mutex);
+    for (auto th : thread_map) {
+        thread *t = th.second;
+        if (t == sched::thread::current()) {
+            continue;
+        }
+        t->remote_thread_local_var(s_current) = t;
+        thread::status expected = thread::status::prestarted;
+        if (t->_detached_state->st.compare_exchange_strong(expected,
                 thread::status::unstarted, std::memory_order_relaxed)) {
-                t->start();
-            }
+            t->start();
         }
     }
 }
