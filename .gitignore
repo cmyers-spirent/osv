@@ -34,3 +34,6 @@ modules/httpserver-jvm-plugin/jvm.so
 modules/httpserver-jvm-plugin/obj/
 modules/cloud-init/cloud-init.so
 modules/cloud-init/obj/
+modules/open-vm-tools/install/
+modules/open-vm-tools/obj/
+modules/open-vm-tools/src/

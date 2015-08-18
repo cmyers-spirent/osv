@@ -1,0 +1,1 @@
+/usr/lib/libffi.so.6: %(miscbase)s/usr/lib64/libffi.so.6.0.2
