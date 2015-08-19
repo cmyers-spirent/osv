@@ -1,11 +1,14 @@
 # Build environment
-miscbase = $(CURDIR)/../../external/$(ARCH)/misc.bin
+base = $(shell readlink -f ../..)
+miscbase = $(base)/external/$(ARCH)/misc.bin
 INCLUDES = \
 	-isystem $(miscbase)/usr/include \
 	-I$(miscbase)/usr/include/glib-2.0 \
 	-I$(miscbase)/usr/lib64/glib-2.0/include
 LIBS = -L$(miscbase)/usr/lib64
 CFLAGS = -Os -fPIC -Wall
+CONF_FLAGS = --without-x --without-pam --without-procps --without-dnet \
+	--without-icu --without-kernel-modules --prefix=/usr
 
 # Build directories
 OUT=$(CURDIR)/install
@@ -34,25 +37,22 @@ directories:
 $(SRC):
 	git clone $(OVT_REPO) --branch $(OVT_BRANCH) --single-branch $(SRC)
 
-patch: $(SRC) glib.patch
+$(SRC)/patch: $(SRC) glib.patch
 	cd $(SRC) && patch -p1 < ../glib.patch
-	@touch patch
+	@touch $(SRC)/patch
 
-$(SRC)/open-vm-tools/configure: patch $(SRC)/open-vm-tools/configure.ac
+$(SRC)/open-vm-tools/configure: $(SRC)/patch $(SRC)/open-vm-tools/configure.ac
 	cd $(SRC)/open-vm-tools && autoreconf -i
 
 $(SRC)/open-vm-tools/Makefile: $(SRC)/open-vm-tools/configure
 	cd $(SRC)/open-vm-tools && \
 		PKG_CONFIG_PATH=$(miscbase)/usr/lib64/pkgconfig \
 		PATH=$(PATH):$(miscbase)/usr/bin \
-		./configure --without-x --without-pam --without-procps --without-dnet \
-		--without-icu --without-kernel-modules \
-		--prefix=/usr \
-		CFLAGS="$(CFLAGS)" CPPFLAGS="$(INCLUDES)"  LDFLAGS="$(LIBS)"
+		./configure $(CONF_FLAGS) CFLAGS="$(CFLAGS)" CPPFLAGS="$(INCLUDES)"  LDFLAGS="$(LIBS)"
 
 $(SRC)/open-vm-tools/lib/lock/libLock.la: $(SRC)/open-vm-tools/Makefile
 	cd $(SRC)/open-vm-tools/lib && \
-		PATH=$(PATH):$(miscbase)/usr/bin make
+		PATH=$(PATH):$(miscbase)/usr/bin make DESTDIR=$(OUT) install
 
 $(OUT)/usr/lib/libvmtools.so: $(SRC)/open-vm-tools/lib/lock/libLock.la
 	cd $(SRC)/open-vm-tools/libvmtools && \

@@ -10,7 +10,7 @@
 extern "C"
 {
 typedef char Bool;
-#include "vmGuestLib/rpcout.h"
+#include "rpcout.h"
 }
 
 #include "ovf-data-source.hh"

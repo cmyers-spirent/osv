@@ -12,7 +12,7 @@ usr_files.add(os.path.join(_module, 'cmdline')).to('/init/00-cmdline')
 
 api.require('httpserver')
 api.require('libyaml')
-api.require('libvmtools')
+api.require('open-vm-tools')
 
 #default = api.run('/usr/mgmt/cloud-init.so --skip-error --file /usr/mgmt/cloud-init.yaml')
 default = ""

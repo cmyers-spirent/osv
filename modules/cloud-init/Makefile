@@ -1,6 +1,7 @@
 miscbase = $(src)/external/$(arch)/misc.bin
 INCLUDES = -isystem $(miscbase)/usr/include
 INCLUDES += -I../../include -I.
+INCLUDES += -I$(lastword $(wildcard ../open-vm-tools/src/open-vm-tools/*/include))
 
 # compiler flags:
 #  -g    adds debugging information to the executable file
@@ -27,7 +28,7 @@ DEPS := $(OBJ_FILES:.o=.d)
 
 STUB_HTTPSERVER_LIBS = $(HTTPSERVER_DIR)/httpserver-stub.so
 LIBS = -lpthread $(boost-libs) $(DEPEDNDS_LIBS) -lyaml-cpp -L$(HTTPSERVER_DIR)/ -lhttpserver -L$(boost-lib-dir)
-LIBS += -lvmtools
+LIBS += -L$(lastword $(wildcard ../open-vm-tools/install/*/lib)) -lvmtools
 
 quiet = $(if $V, $1, @echo " $2"; $1)
 very-quiet = $(if $V, $1, @$1)
