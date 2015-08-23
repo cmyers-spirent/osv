@@ -6,6 +6,9 @@
 #include <boost/optional.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <osv/debug.hh>
+#include <bsd/porting/networking.hh>
+#include <bsd/porting/route.h>
 
 extern "C"
 {
@@ -16,6 +19,11 @@ typedef char Bool;
 #include "ovf-data-source.hh"
 
 using boost::property_tree::ptree;
+
+const std::string ovf::mgmt_if     = "eth0";
+const std::string ovf::ip_key      = "ip_address";
+const std::string ovf::netmask_key = "subnet_mask";
+const std::string ovf::gateway_key = "default_gateway";
 
 std::string ovf::launch_index()
 {
@@ -61,7 +69,9 @@ void ovf::probe()
 {
     std::istringstream xml(rpc_query("guestinfo.ovfEnv"));
     parse_xml(xml);
+    maybe_config_interface();
 }
+
 
 std::string ovf::rpc_query(std::string s)
 {
@@ -118,4 +128,36 @@ std::string ovf::base64_decode(const std::string &s)
               std::ostream_iterator<char>(os));
 
     return os.str();
+}
+
+bool ovf::maybe_config_interface()
+{
+   /* Check for IP, netmask, and gateway */
+    auto ip = _properties.find(ip_key);
+    auto netmask = _properties.find(netmask_key);
+    auto gateway = _properties.find(gateway_key);
+    auto end = _properties.end();
+
+    if (ip != end && netmask != end) {
+        auto err = osv::start_if(mgmt_if, ip->second, netmask->second);
+        if (err) {
+            debug("Unable to configure " + std::string(mgmt_if)
+                  + " with ip_address " + ip->second
+                  + " and subnet_mask " + netmask->second
+                  + ": " + strerror(err) + "\n");
+            return false;
+        } else {
+            debug("Configured " + ip->second + "/" + netmask->second
+                  + " on " + std::string(mgmt_if) + ".\n");
+        }
+
+        if (gateway != end) {
+            /* XXX: we don't know if this void function succeeds or not... :(  */
+            osv_route_add_network("0.0.0.0",
+                                  "0.0.0.0",
+                                  gateway->second.c_str());
+        }
+    }
+
+    return true;  /* we set something... */
 }

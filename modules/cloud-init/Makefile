@@ -1,6 +1,7 @@
 miscbase = $(src)/external/$(arch)/misc.bin
 INCLUDES = -isystem $(miscbase)/usr/include
 INCLUDES += -I../../include -I.
+INCLUDES += -I$(src)
 INCLUDES += -I$(lastword $(wildcard ../open-vm-tools/src/open-vm-tools/*/include))
 
 # compiler flags:

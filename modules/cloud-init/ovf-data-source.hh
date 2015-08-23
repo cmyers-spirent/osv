@@ -29,6 +29,13 @@ private:
     void parse_xml(std::istream &);
 
     std::string base64_decode(const std::string &);
+
+    static const std::string mgmt_if;
+    static const std::string ip_key;
+    static const std::string netmask_key;
+    static const std::string gateway_key;
+
+    bool maybe_config_interface();
 };
 
 #endif
