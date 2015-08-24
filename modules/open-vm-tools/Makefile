@@ -22,7 +22,9 @@ ifndef ARCH
 ARCH = x64
 endif
 
-module: directories $(OUT)/usr/bin/vmtoolsd.so plugins
+module: all
+
+all: directories $(SRC)/plugins $(SRC)/vmtoolsd
 
 ###
 # Prerequisites
@@ -34,46 +36,48 @@ directories:
 ###
 # vmtools build magic
 ###
-$(SRC):
+$(SRC)/download:
 	git clone $(OVT_REPO) --branch $(OVT_BRANCH) --single-branch $(SRC)
+	@touch $(SRC)/download
 
-$(SRC)/patch: $(SRC) glib.patch
+$(SRC)/patch: $(SRC)/download glib.patch
 	cd $(SRC) && patch -p1 < ../glib.patch
 	@touch $(SRC)/patch
 
-$(SRC)/open-vm-tools/configure: $(SRC)/patch $(SRC)/open-vm-tools/configure.ac
+$(SRC)/configure: $(SRC)/patch
 	cd $(SRC)/open-vm-tools && autoreconf -i
+	@touch $(SRC)/configure
 
-$(SRC)/open-vm-tools/Makefile: $(SRC)/open-vm-tools/configure
+$(SRC)/open-vm-tools/Makefile: $(SRC)/configure
 	cd $(SRC)/open-vm-tools && \
 		PKG_CONFIG_PATH=$(miscbase)/usr/lib64/pkgconfig \
 		PATH=$(PATH):$(miscbase)/usr/bin \
 		./configure $(CONF_FLAGS) CFLAGS="$(CFLAGS)" CPPFLAGS="$(INCLUDES)"  LDFLAGS="$(LIBS)"
 
-$(SRC)/open-vm-tools/lib/lock/libLock.la: $(SRC)/open-vm-tools/Makefile
+$(SRC)/libs: $(SRC)/open-vm-tools/Makefile
 	cd $(SRC)/open-vm-tools/lib && \
 		PATH=$(PATH):$(miscbase)/usr/bin make DESTDIR=$(OUT) install
-
-$(OUT)/usr/lib/libvmtools.so: $(SRC)/open-vm-tools/lib/lock/libLock.la
 	cd $(SRC)/open-vm-tools/libvmtools && \
 		PATH=$(PATH):$(miscbase)/usr/bin make DESTDIR=$(OUT) install
+	cd $(SRC)/open-vm-tools/libhgfs && \
+		PATH=$(PATH):$(miscbase)/usr/bin make DESTDIR=$(OUT) install
+	@touch $(SRC)/libs
 
-$(OUT)/usr/bin/vmtoolsd.so: $(OUT)/usr/lib/libvmtools.so
+$(SRC)/plugins: $(SRC)/open-vm-tools/Makefile $(SRC)/libs
+	cd $(SRC)/open-vm-tools/services/plugins && \
+		PATH=$(PATH):$(miscbase)/usr/bin make DESTDIR=$(OUT) install
+	@touch $(SRC)/plugins
+
+$(SRC)/vmtoolsd: $(SRC)/open-vm-tools/Makefile $(SRC)/libs
 	cd $(SRC)/open-vm-tools/services/vmtoolsd && \
 		PATH=$(PATH):$(miscbase)/usr/bin make \
-			DESTDIR=$(OUT) \
-			LDFLAGS="-Wc,-shared $(LIBS)" \
-			install
-	@mv $(OUT)/usr/bin/vmtoolsd $(OUT)/usr/bin/vmtoolsd.so
-
-plugins: $(OUT)/usr/lib/libvmtools.so
-	cd $(SRC)/open-vm-tools/services/plugins/guestInfo && \
-		PATH=$(PATH):$(miscbase)/usr/bin make \
-			DESTDIR=$(OUT) install
+			DESTDIR=$(OUT) LDFLAGS="-Wc,-shared $(LIBS)" install
+	@touch $(SRC)/vmtoolsd
 
 .PHONY: clean
 clean:
 	cd $(SRC)/open-vm-tools && make clean
+	rm -rf $(SRC)/install $(SRC)/libs $(SRC)/plugins $(SRC)/vmtoolsd
 	rm -rf $(OUT)
 
 .PHONY: distclean
