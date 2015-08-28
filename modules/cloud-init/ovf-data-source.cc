@@ -6,15 +6,10 @@
 #include <boost/optional.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
-#include <osv/debug.hh>
 #include <bsd/porting/networking.hh>
 #include <bsd/porting/route.h>
-
-extern "C"
-{
-typedef char Bool;
-#include "rpcout.h"
-}
+#include <osv/debug.hh>
+#include <osv/vmw-rpc.hh>
 
 #include "ovf-data-source.hh"
 
@@ -37,12 +32,12 @@ std::string ovf::reservation_id()
 
 std::string ovf::external_ip()
 {
-    return rpc_query("guestinfo.ip");
+    return vmw::rpc::info::request("guestinfo.ip");
 }
 
 std::string ovf::internal_ip()
 {
-    return rpc_query("guestinfo.ip");
+    return vmw::rpc::info::request("guestinfo.ip");
 }
 
 std::string ovf::external_hostname()
@@ -62,30 +57,14 @@ std::string ovf::get_user_data()
 
 std::string ovf::get_name()
 {
-    return "OVF";
+    return "VMware";
 }
 
 void ovf::probe()
 {
-    std::istringstream xml(rpc_query("guestinfo.ovfEnv"));
+    std::istringstream xml(vmw::rpc::info::request("guestinfo.ovfEnv"));
     parse_xml(xml);
     maybe_config_interface();
-}
-
-
-std::string ovf::rpc_query(std::string s)
-{
-    std::unique_ptr<char> reply;
-    char *replybuf = reply.get();
-    int err = 0;
-
-    if ((err = RpcOut_sendOne(&replybuf, NULL, "info-get %s", s.c_str())) == 0) {
-        std::ostringstream error_msg("RPC call failed: ");
-        error_msg << (replybuf ? replybuf : "nullptr");
-        throw std::runtime_error(error_msg.str());
-    }
-
-    return replybuf;
 }
 
 void ovf::parse_xml(std::istream &xml)

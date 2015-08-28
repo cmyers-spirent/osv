@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <functional>
-#include <iostream>
+#include <string>
 
 namespace vmw {
 namespace rpc {

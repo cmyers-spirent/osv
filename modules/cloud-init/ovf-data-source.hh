@@ -1,8 +1,10 @@
 #ifndef _OSV_CLOUD_INIT_OVF_DATASOURCE_HH
 #define _OSV_CLOUD_INIT_OVF_DATASOURCE_HH
 
-#include <string>
 #include "data-source.hh"
+
+#include <string>
+#include <unordered_map>
 
 class ovf: public data_source {
 public:
@@ -25,7 +27,6 @@ public:
 private:
     std::unordered_map<std::string, std::string> _properties;
 
-    std::string rpc_query(std::string);
     void parse_xml(std::istream &);
 
     std::string base64_decode(const std::string &);
