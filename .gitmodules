@@ -20,7 +20,7 @@
 	ignore = dirty
 [submodule "external/x64/misc.bin"]
 	path = external/x64/misc.bin
-	url = https://github.com/DerangedMonkeyNinja/misc.bin.git
+	url = ../../cloudius-systems/misc.bin.git
 	ignore = dirty
 [submodule "mgmt"]
 	path = mgmt
