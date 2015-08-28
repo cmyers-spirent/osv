@@ -1,3 +1,4 @@
+#include <exception>
 #include <vector>
 
 #include <osv/debug.h>
