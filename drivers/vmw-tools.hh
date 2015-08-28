@@ -33,7 +33,6 @@ public:
     void dump_config() {};
 
     static hw_driver* probe();
-    static void register_tools(tools *t);
 
     /* Unfortunately, some callbacks need access to these methods */
     static void update_hostname();

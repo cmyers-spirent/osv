@@ -17,8 +17,6 @@
 #include <osv/shutdown.hh>
 #include <osv/version.hh>
 
-vmw::tools *_tools = nullptr;
-
 using namespace osv::clock::literals;
 
 namespace vmw {
@@ -256,12 +254,6 @@ namespace vmw {
         catch(const std::runtime_error &e) {
             return nullptr;
         }
-    }
-
-    void tools::register_tools(tools *t)
-    {
-        assert(_tools == nullptr);
-        _tools = t;
     }
 
     void tools::tclo_monitor()
