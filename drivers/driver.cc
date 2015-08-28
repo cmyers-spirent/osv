@@ -32,6 +32,11 @@ namespace hw {
         _probes.push_back(probe);
     }
 
+    void driver_manager::register_driver(std::function<hw_driver* ()> probe)
+    {
+        _null_probes.push_back(probe);
+    }
+
     void driver_manager::load_all()
     {
         auto dm = device_manager::instance();
@@ -44,6 +49,13 @@ namespace hw {
                 }
             }
         });
+
+        for (auto probe : _null_probes) {
+            if (auto drv = probe()) {
+                 _drivers.push_back(drv);
+                break;
+            }
+        }
     }
 
     void driver_manager::unload_all()

@@ -43,6 +43,7 @@ namespace hw {
         }
 
         void register_driver(std::function<hw_driver* (hw_device*)> probe);
+        void register_driver(std::function<hw_driver* ()> probe);
         void load_all();
         void unload_all();
         void list_drivers();
@@ -50,6 +51,7 @@ namespace hw {
     private:
         static driver_manager* _instance;
         std::vector<std::function<hw_driver* (hw_device*)>> _probes;
+        std::vector<std::function<hw_driver* ()>> _null_probes;
         std::vector<hw_driver*> _drivers;
     };
 }
