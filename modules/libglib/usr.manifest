@@ -1,3 +1,0 @@
-/usr/lib/libglib-2.0.so.0: %(miscbase)s/usr/lib64/libglib-2.0.so.0.4200.1
-/usr/lib/libgmodule-2.0.so.0: %(miscbase)s/usr/lib64/libgmodule-2.0.so.0.4200.1
-/usr/lib/libgobject-2.0.so.0: %(miscbase)s/usr/lib64/libgobject-2.0.so.0.4200.1
