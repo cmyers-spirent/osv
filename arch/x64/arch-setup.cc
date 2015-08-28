@@ -228,6 +228,7 @@ void arch_init_premain()
 #include "drivers/xenfront-xenbus.hh"
 #include "drivers/ahci.hh"
 #include "drivers/vmw-pvscsi.hh"
+#include "drivers/vmw-tools.hh"
 #include "drivers/vmxnet3.hh"
 #include "drivers/ide.hh"
 
@@ -256,6 +257,7 @@ void arch_init_drivers()
     drvman->register_driver(xenfront::xenbus::probe);
     drvman->register_driver(ahci::hba::probe);
     drvman->register_driver(vmw::pvscsi::probe);
+    drvman->register_driver(vmw::tools::probe);
     drvman->register_driver(vmw::vmxnet3::probe);
     drvman->register_driver(ide::ide_drive::probe);
     boot_time.event("drivers probe");
