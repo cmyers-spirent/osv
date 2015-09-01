@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace vmw {
 namespace rpc {
@@ -171,13 +172,14 @@ private:
 };
 
 /* Basic RPC operations */
-void        ping(vmw::rpc::connection *connection);
-void        send(vmw::rpc::connection *connection, std::string message);
-std::string recv(vmw::rpc::connection *connection);
+void              ping(vmw::rpc::connection *connection);
+void              send(vmw::rpc::connection *connection, std::string message);
+std::string       recv(vmw::rpc::connection *connection);
+std::vector<char> recv_raw(vmw::rpc::connection *connection);
 
 /* Complete RPC operations, e.g. send + receive */
-std::string request(std::string r);
-std::string request(const char *r);
+std::string       request(const std::string r);
+std::vector<char> request_raw(const std::string r);
 
 } /* namespace rpc */
 } /* namespace vmw */

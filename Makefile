@@ -786,6 +786,7 @@ drivers += drivers/vmw-rpc.o
 drivers += drivers/vmw-tools.o
 drivers += drivers/cpu-steal.o
 drivers += drivers/kvmsteal.o
+drivers += drivers/vmw-steal.o
 endif # x64
 
 ifeq ($(arch),aarch64)

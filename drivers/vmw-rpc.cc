@@ -231,9 +231,9 @@ namespace rpc {
         send_data();
     }
 
-    std::string recv(vmw::rpc::connection *connection)
+    std::vector<char> recv_raw(vmw::rpc::connection *connection)
     {
-        std::string empty("");
+        std::vector<char> incoming;
 
         auto get_length = vmw::rpc::message(vmw::rpc::command::do_rpc,
                                             vmw::rpc::subcommand::get_length,
@@ -242,20 +242,18 @@ namespace rpc {
         get_length();
 
         if ((get_length._frame.rcx.words.high & vmw::rpc::reply::do_recv) == 0)
-            return empty;
+            return incoming;
 
         uint32_t msg_len = get_length._frame.rbx.dword;
         uint16_t msg_key = get_length._frame.rdx.words.high;
-        std::vector<char> incoming;
-        incoming.reserve(msg_len + 1);
 
-        auto get_data = vmw::rpc::message(message::recv,
+        incoming.resize(msg_len + 1);
+
+        auto get_data = vmw::rpc::message(vmw::rpc::message::recv,
                                           incoming.data(), msg_len,
                                           connection);
 
         get_data();
-
-        incoming[msg_len] = '\0';
 
         auto ack = vmw::rpc::message(vmw::rpc::command::do_rpc,
                                      vmw::rpc::subcommand::get_end,
@@ -263,10 +261,19 @@ namespace rpc {
 
         ack();
 
-        return std::string(incoming.data());
+        return incoming;
     }
 
-    std::string request(std::string r)
+    std::string recv(vmw::rpc::connection *connection)
+    {
+        std::vector<char> incoming = recv_raw(connection);
+        if (incoming.size())
+            return std::string(incoming.data());
+        else
+            return "";
+    }
+
+    std::string request(const std::string r)
     {
         vmw::rpc::connection conn(vmw::rpc::rpci);
         send(&conn, r);
@@ -276,6 +283,13 @@ namespace rpc {
     std::string request(const char *r)
     {
         return request(std::string(r));
+    }
+
+    std::vector<char> request_raw(const std::string r)
+    {
+        vmw::rpc::connection conn(vmw::rpc::rpci);
+        send(&conn, r);
+        return recv_raw(&conn);
     }
 
 } /* namespace rpc */
