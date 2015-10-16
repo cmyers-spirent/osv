@@ -21,7 +21,7 @@ class jvm(api.basic_app):
             for app in self.apps:
                 mains.write('\n'.join(app.get_multimain_lines()) + '\n')
 
-        manifest.write('%s:%s\n' % (self.multimain_manifest, javamains_path))
+        manifest.write('%s: %s\n' % (self.multimain_manifest, javamains_path))
 
     def get_launcher_args(self):
         jvm_args = []
@@ -90,6 +90,8 @@ def make_cmd(cmdline, j, jobserver):
     ret = 'make ' + cmdline
     if jobserver is not None:
         ret += ' -j --jobserver-fds=' + jobserver
+    elif j is '-':
+        ret += ' -j'
     elif j is not None:
         ret += ' -j' + j
     return ret

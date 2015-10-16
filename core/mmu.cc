@@ -786,6 +786,65 @@ bool contains(uintptr_t start, uintptr_t end, vma& y)
     return y.start() >= start && y.end() <= end;
 }
 
+// So that we don't need to create a vma (with size, permission and alot of
+// other irrelevant data) just to find an address in the vma list, we have
+// the following addr_compare, which compares exactly like vma_compare does,
+// except that it takes a bare uintptr_t instead of a vma.
+class addr_compare {
+public:
+    bool operator()(const vma& x, uintptr_t y) const { return x.start() < y; }
+    bool operator()(uintptr_t x, const vma& y) const { return x < y.start(); }
+};
+
+// Find the single (if any) vma which contains the given address.
+// The complexity is logarithmic in the number of vmas in vma_list.
+static inline vma_list_type::iterator
+find_intersecting_vma(uintptr_t addr) {
+    auto vma = vma_list.lower_bound(addr, addr_compare());
+    if (vma->start() == addr) {
+        return vma;
+    }
+    // Otherwise, vma->start() > addr, so we need to check the previous vma
+    --vma;
+    if (addr >= vma->start() && addr < vma->end()) {
+        return vma;
+    } else {
+        return vma_list.end();
+    }
+}
+
+// Find the list of vmas which intersect a given address range. Because the
+// vmas are sorted in vma_list, the result is a consecutive slice of vma_list,
+// [first, second), between the first returned iterator (inclusive), and the
+// second returned iterator (not inclusive).
+// The complexity is logarithmic in the number of vmas in vma_list.
+static inline std::pair<vma_list_type::iterator, vma_list_type::iterator>
+find_intersecting_vmas(const addr_range& r)
+{
+    if (r.end() <= r.start()) { // empty range, so nothing matches
+        return {vma_list.end(), vma_list.end()};
+    }
+    auto start = vma_list.lower_bound(r.start(), addr_compare());
+    if (start->start() > r.start()) {
+        // The previous vma might also intersect with our range if it ends
+        // after our range's start.
+        auto prev = std::prev(start);
+        if (prev->end() > r.start()) {
+            start = prev;
+        }
+    }
+    // If the start vma is actually beyond the end of the search range,
+    // there is no intersection.
+    if (start->start() >= r.end()) {
+        return {vma_list.end(), vma_list.end()};
+    }
+    // end is the first vma starting >= r.end(), so any previous vma (after
+    // start) surely started < r.end() so is part of the intersection.
+    auto end = vma_list.lower_bound(r.end(), addr_compare());
+    return {start, end};
+}
+
+
 /**
  * Change virtual memory range protection
  *
@@ -798,8 +857,7 @@ static error protect(const void *addr, size_t size, unsigned int perm)
 {
     uintptr_t start = reinterpret_cast<uintptr_t>(addr);
     uintptr_t end = start + size;
-    addr_range r(start, end);
-    auto range = vma_list.equal_range(r, vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, end));
     for (auto i = range.first; i != range.second; ++i) {
         if (i->perm() == perm)
             continue;
@@ -849,8 +907,7 @@ uintptr_t find_hole(uintptr_t start, uintptr_t size)
 
 ulong evacuate(uintptr_t start, uintptr_t end)
 {
-    addr_range r(start, end);
-    auto range = vma_list.equal_range(r, vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, end));
     ulong ret = 0;
     for (auto i = range.first; i != range.second; ++i) {
         i->split(end);
@@ -883,8 +940,7 @@ static error sync(const void* addr, size_t length, int flags)
     auto start = reinterpret_cast<uintptr_t>(addr);
     auto end = start+length;
     auto err = make_error(ENOMEM);
-    addr_range r(start, end);
-    auto range = vma_list.equal_range(r, vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, end));
     for (auto i = range.first; i != range.second; ++i) {
         err = i->sync(std::max(start, i->start()), std::min(end, i->end()));
         if (err.bad()) {
@@ -1045,7 +1101,7 @@ static void depopulate(void* addr, size_t length)
 {
     length = align_up(length, mmu::page_size);
     auto start = reinterpret_cast<uintptr_t>(addr);
-    auto range = vma_list.equal_range(addr_range(start, start + length), vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, start + length));
     for (auto i = range.first; i != range.second; ++i) {
         i->operate_range(unpopulate<>(i->page_ops()), reinterpret_cast<void*>(start), std::min(length, i->size()));
         start += i->size();
@@ -1057,7 +1113,7 @@ static void nohugepage(void* addr, size_t length)
 {
     length = align_up(length, mmu::page_size);
     auto start = reinterpret_cast<uintptr_t>(addr);
-    auto range = vma_list.equal_range(addr_range(start, start + length), vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, start + length));
     for (auto i = range.first; i != range.second; ++i) {
         if (!i->has_flags(mmap_small)) {
             i->update_flags(mmap_small);
@@ -1150,9 +1206,8 @@ bool ismapped(const void *addr, size_t size)
 {
     uintptr_t start = (uintptr_t) addr;
     uintptr_t end = start + size;
-    addr_range r(start, end);
 
-    auto range = vma_list.equal_range(r, vma::addr_compare());
+    auto range = find_intersecting_vmas(addr_range(start, end));
     for (auto p = range.first; p != range.second; ++p) {
         if (p->start() > start)
             return false;
@@ -1219,7 +1274,7 @@ void vm_fault(uintptr_t addr, exception_frame* ef)
     }
     addr = align_down(addr, mmu::page_size);
     WITH_LOCK(vma_list_mutex.for_read()) {
-        auto vma = vma_list.find(addr_range(addr, addr+1), vma::addr_compare());
+        auto vma = find_intersecting_vma(addr);
         if (vma == vma_list.end() || access_fault(*vma, ef->get_error())) {
             vm_sigsegv(addr, ef);
             trace_mmu_vm_fault_sigsegv(addr, ef->get_error(), "slow");
@@ -1479,7 +1534,8 @@ ulong map_jvm(unsigned char* jvm_addr, size_t size, size_t align, balloon_ptr b)
     vma* v;
     WITH_LOCK(vma_list_mutex.for_read()) {
         u64 a = reinterpret_cast<u64>(addr);
-        v = &*vma_list.find(addr_range(a, a+1), vma::addr_compare());
+        v = &*find_intersecting_vma(a);
+
         // It has to be somewhere!
         assert(v != &*vma_list.end());
         assert(v->has_flags(mmap_jvm_heap) | v->has_flags(mmap_jvm_balloon));
@@ -1501,8 +1557,7 @@ ulong map_jvm(unsigned char* jvm_addr, size_t size, size_t align, balloon_ptr b)
         // now the finishing code would have to deal with the case where the
         // bounds found in the vma are not the real bounds. We delete it right
         // away and avoid it altogether.
-        addr_range r(start, start + size);
-        auto range = vma_list.equal_range(r, vma::addr_compare());
+        auto range = find_intersecting_vmas(addr_range(start, start + size));
 
         for (auto i = range.first; i != range.second; ++i) {
             if (i->has_flags(mmap_jvm_balloon)) {
