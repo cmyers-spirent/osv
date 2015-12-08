@@ -19,6 +19,8 @@
 #include <osv/mutex.h>
 #include <osv/elf.hh>
 #include <list>
+#include <unordered_map>
+#include <string>
 
 extern "C" void __libc_start_main(int(*)(int, char**), int, char**, void(*)(),
     void(*)(), void(*)(), void*);
@@ -84,15 +86,23 @@ public:
      *
      * \param command command to execute
      * \param args Parameters which will be passed to program's main().
+     * \param new_program true if a new elf namespace must be started
+     * \param env pointer to an unordered_map than will be merged in current env
      * \throw launch_error
      */
-    static shared_app_t run(const std::string& command, const std::vector<std::string>& args);
+    static shared_app_t run(const std::string& command,
+            const std::vector<std::string>& args,
+            bool new_program = false,
+            const std::unordered_map<std::string, std::string> *env = nullptr);
 
     static void join_all() {
         apps.join();
     }
 
-    application(const std::string& command, const std::vector<std::string>& args);
+    application(const std::string& command,
+            const std::vector<std::string>& args,
+            bool new_program = false,
+            const std::unordered_map<std::string, std::string> *env = nullptr);
 
     ~application();
 
@@ -145,7 +155,15 @@ public:
 
     std::shared_ptr<application_runtime> runtime() const { return _runtime; }
     std::shared_ptr<elf::object> lib() const { return _lib; }
+
+    elf::program *program();
 private:
+    void new_program();
+    void clone_osv_environ();
+    void set_environ(const std::string &key, const std::string &value,
+                     bool new_program);
+    void merge_in_environ(bool new_program = false,
+        const std::unordered_map<std::string, std::string> *env = nullptr);
     shared_app_t get_shared() {
         return shared_from_this();
     }
@@ -160,12 +178,14 @@ private:
     using main_func_t = int(int, char**);
 
     pthread_t _thread;
+    std::unique_ptr<elf::program> _program; // namespace program
     std::vector<std::string> _args;
     std::string _command;
     int _return_code;
     bool _termination_requested;
     mutex _termination_mutex;
     std::shared_ptr<elf::object> _lib;
+    std::shared_ptr<elf::object> _libenviron;
     main_func_t* _main;
     void (*_entry_point)();
     static app_registry apps;

@@ -82,7 +82,7 @@ include conf/$(arch).mk
 CROSS_PREFIX ?= $(if $(filter-out $(arch), $(host_arch)), $(arch)-linux-gnu-)
 CXX=$(CROSS_PREFIX)g++
 CC=$(CROSS_PREFIX)gcc
-LD=$(CROSS_PREFIX)ld
+LD=$(CROSS_PREFIX)ld.bfd
 STRIP=$(CROSS_PREFIX)strip
 OBJCOPY=$(CROSS_PREFIX)objcopy
 
@@ -102,6 +102,22 @@ endif
 
 ###########################################################################
 
+# We need some external git modules to have been downloaded, because the
+# default "make" depends on the following directories:
+#   musl/ -  for some of the header files (symbolic links in include/api) and
+#            some of the source files ($(musl) below).
+#   external/x64/acpica - for the ACPICA library (see $(acpi) below).
+#   external/x64/openjdk.bin - for $(java-targets) below.
+# Additional submodules are need when certain make parameters are used.
+ifeq (,$(wildcard musl/include))
+    $(error Missing musl/ directory. Please run "git submodule update --init --recursive")
+endif
+ifeq (,$(wildcard external/x64/acpica/source))
+    $(error Missing external/x64/acpica/ directory. Please run "git submodule update --init --recursive")
+endif
+ifeq (,$(wildcard external/x64/openjdk.bin/usr))
+    $(error Missing external/x64/openjdk.bin/ directory. Please run "git submodule update --init --recursive")
+endif
 
 # This makefile wraps all commands with the $(quiet) or $(very-quiet) macros
 # so that instead of half-a-screen-long command lines we short summaries
@@ -397,8 +413,8 @@ $(out)/loader.img: $(out)/boot.bin $(out)/lzloader.elf
 	$(call quiet, dd if=$(out)/boot.bin of=$@ > /dev/null 2>&1, DD loader.img boot.bin)
 	$(call quiet, dd if=$(out)/lzloader.elf of=$@ conv=notrunc seek=128 > /dev/null 2>&1, \
 		DD loader.img lzloader.elf)
-	$(call quiet, scripts/imgedit.py setsize $@ $(image-size), IMGEDIT $@)
-	$(call quiet, scripts/imgedit.py setargs $@ $(cmdline), IMGEDIT $@)
+	$(call quiet, scripts/imgedit.py setsize "-f raw $@" $(image-size), IMGEDIT $@)
+	$(call quiet, scripts/imgedit.py setargs "-f raw $@" $(cmdline), IMGEDIT $@)
 
 $(out)/loader.bin: $(out)/arch/x64/boot32.o arch/x64/loader32.ld
 	$(call quiet, $(LD) -nostartfiles -static -nodefaultlibs -o $@ \
@@ -890,6 +906,8 @@ objects += core/libaio.o
 #include $(src)/libc/build.mk:
 libc =
 musl =
+environ_libc =
+environ_musl =
 
 ifeq ($(arch),x64)
 musl_arch = x86_64
@@ -950,6 +968,14 @@ libc += env/secure_getenv.o
 musl += env/putenv.o
 musl += env/setenv.o
 musl += env/unsetenv.o
+
+environ_libc += env/__environ.c
+environ_musl += env/clearenv.c
+environ_musl += env/getenv.c
+environ_libc += env/secure_getenv.c
+environ_musl += env/putenv.c
+environ_musl += env/setenv.c
+environ_musl += env/unsetenv.c
 
 musl += ctype/__ctype_b_loc.o
 
@@ -1763,8 +1789,15 @@ $(out)/loader.elf: $(out)/arch/$(arch)/boot.o arch/$(arch)/loader.ld $(out)/load
 
 $(out)/bsd/%.o: COMMON += -DSMP -D'__FBSDID(__str__)=extern int __bogus__'
 
+environ_sources = $(addprefix libc/, $(environ_libc))
+environ_sources += $(addprefix musl/src/, $(environ_musl))
+
+$(out)/libenviron.so: $(environ_sources)
+	$(makedir)
+	 $(call quiet, $(CC) $(CFLAGS) -shared -o $(out)/libenviron.so $^, LINK libenviron.so)
+
 $(out)/bootfs.bin: scripts/mkbootfs.py bootfs.manifest.skel $(tools:%=$(out)/%) \
-		$(out)/zpool.so $(out)/zfs.so
+		$(out)/zpool.so $(out)/zfs.so $(out)/libenviron.so
 	$(call quiet, olddir=`pwd`; cd $(out); $$olddir/scripts/mkbootfs.py -o bootfs.bin -d bootfs.bin.d -m $$olddir/bootfs.manifest.skel \
 		-D jdkbase=$(jdkbase) -D gccbase=$(gccbase) -D \
 		glibcbase=$(glibcbase) -D miscbase=$(miscbase), MKBOOTFS $@)
@@ -1783,7 +1816,6 @@ $(out)/tools/cpiod/cpiod.so: $(out)/tools/cpiod/cpiod.o $(out)/tools/cpiod/cpio.
 $(out)/tools/libtools.so: $(out)/tools/route/route_info.o $(out)/tools/ifconfig/network_interface.o
 	$(makedir)
 	 $(call quiet, $(CC) $(CFLAGS) -shared -o $(out)/tools/libtools.so $^, LINK libtools.so)
-
 
 ################################################################################
 # The dependencies on header files are automatically generated only after the

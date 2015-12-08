@@ -530,7 +530,8 @@ public:
     /**
      * Set the default search path for get_library().
      *
-     * The search path defaults (as set in loader.cc) to /, /usr/lib.
+     * The search path defaults (as set in elf::program::program())
+     * to /, /usr/lib.
      */
     void set_search_path(std::initializer_list<std::string> path);
 
@@ -596,8 +597,10 @@ private:
     friend class object;
 };
 
+void create_main_program();
+
 /**
- * Get the single elf::program instance
+ * Get the current elf::program instance
  */
 program* get_program();
 

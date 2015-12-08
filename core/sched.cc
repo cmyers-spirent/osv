@@ -868,6 +868,17 @@ static void run_exit_notifiers()
     }
 }
 
+// not in the header to avoid double inclusion between osv/app.hh and
+// osv/sched.hh
+osv::application *thread::current_app() {
+    auto cur = current();
+
+    if (!cur->_app_runtime) {
+        return nullptr;
+    }
+
+    return &(cur->_app_runtime->app);
+}
 
 thread::~thread()
 {
