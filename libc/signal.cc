@@ -602,3 +602,24 @@ extern "C" int signalfd(int fd, const sigset_t *mask, int flags)
     errno = ENOSYS;
     return -1;
 }
+
+extern "C" int sigwaitinfo(const sigset_t *__restrict mask,
+                           siginfo_t *__restrict si)
+{
+    int signo;
+
+    int ret = sigwait(mask, &signo);
+
+    if (si) {
+        memset(si, 0, sizeof(*si));
+        si->si_signo = signo;
+        si->si_errno = ret;
+    }
+
+    if (ret) {
+        errno = ret;
+        return -1;
+    }
+
+    return signo;
+}

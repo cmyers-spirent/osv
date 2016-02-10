@@ -1229,6 +1229,7 @@ timer_list::callback_dispatch::callback_dispatch()
 void timer_list::fired()
 {
     auto now = osv::clock::uptime::now();
+ again:
     _last = osv::clock::uptime::time_point::max();
     _list.expire(now);
     timer_base* timer;
@@ -1237,7 +1238,17 @@ void timer_list::fired()
         timer->expire();
     }
     if (!_list.empty()) {
-        rearm();
+        // We could have simply called rearm() here, but this would lead to
+        // recursion if the next timer has already expired in the time that
+        // passed above. Better iterate in that case, instead.
+        now = osv::clock::uptime::now();
+        auto t = _list.get_next_timeout();
+        if (t <= now) {
+            goto again;
+        } else {
+            _last = t;
+            clock_event->set(t - now);
+        }
     }
 }
 
@@ -1246,7 +1257,7 @@ void timer_list::rearm()
     auto t = _list.get_next_timeout();
     if (t < _last) {
         _last = t;
-        clock_event->set(t);
+        clock_event->set(t - osv::clock::uptime::now());
     }
 }
 

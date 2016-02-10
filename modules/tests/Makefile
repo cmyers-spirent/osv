@@ -1,4 +1,4 @@
-module: usr.manifest
+module: usr.manifest build_all_tests
 
 # Paths set by scripts/build
 src := $(OSV_BASE)
@@ -110,6 +110,8 @@ BOOSTLIBS=$(src)/external/$(ARCH)/misc.bin/usr/lib64
 $(boost-tests:%=$(out)/tests/%): LIBS += \
 	 $(BOOSTLIBS)/libboost_unit_test_framework.so \
 	 $(BOOSTLIBS)/libboost_filesystem.so
+$(boost-tests:%=$(out)/tests/%): CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 \
+	-isystem $(src)/external/$(ARCH)/misc.bin/usr/include
 
 tests += $(boost-tests)
 
@@ -142,8 +144,11 @@ $(solaris-tests:%=$(out)/tests/%): COMMON+= \
 
 all_tests := $(tests:%=tests/%)
 
+build_all_tests: $(all_tests:%=$(out)/%)
+.PHONY: build_all_tests
+
 # Automatically generate usr.manifest which includes all tests.
-usr.manifest: $(all_tests:%=$(out)/%) $(lastword $(MAKEFILE_LIST)) usr.manifest.skel
+usr.manifest: $(lastword $(MAKEFILE_LIST)) usr.manifest.skel
 	@echo "  generating modules/tests/usr.manifest"
 	@cat $@.skel > $@
 	@echo $(all_tests) | tr ' ' '\n' | awk '{print "/" $$0 ": ./" $$0}' >> $@
