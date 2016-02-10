@@ -78,3 +78,8 @@ int __vsprintf_chk (char *s, int flags, size_t slen, const char *format,
     }
     return ret;
 }
+
+int __vdprintf_chk(int fd, int flag, const char *format, va_list args)
+{
+    return vdprintf(fd, format, args);
+}
