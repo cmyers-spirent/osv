@@ -234,6 +234,7 @@ namespace pci {
 
         enum pci_class_codes {
             PCI_CLASS_STORAGE       = 0x01,
+            PCI_CLASS_NETWORK       = 0x02,
             PCI_CLASS_DISPLAY       = 0x03
         };
 
