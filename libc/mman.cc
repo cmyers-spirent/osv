@@ -52,6 +52,9 @@ unsigned libc_flags_to_mmap(int flags)
     if (flags & MAP_UNINITIALIZED) {
         mmap_flags |= mmu::mmap_uninitialized;
     }
+    if (flags & MAP_32BIT) {
+        mmap_flags |= mmu::mmap_32bit;
+    }
     return mmap_flags;
 }
 

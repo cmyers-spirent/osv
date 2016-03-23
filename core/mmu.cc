@@ -1104,12 +1104,16 @@ public:
     }
 };
 
-uintptr_t allocate(vma *v, uintptr_t start, size_t size, bool search)
+uintptr_t allocate(vma *v, uintptr_t start, size_t size, bool search, bool lower_2g)
 {
     if (search) {
         // search for unallocated hole around start
         if (!start) {
-            start = 0x200000000000ul;
+            if (lower_2g) {
+                start = 0x2000000ul;
+            } else {
+                start = 0x200000000000ul;
+            }
         }
         start = find_hole(start, size);
     } else {
@@ -1217,7 +1221,7 @@ void* map_anon(const void* addr, size_t size, unsigned flags, unsigned perm)
     auto start = reinterpret_cast<uintptr_t>(addr);
     auto* vma = new mmu::anon_vma(addr_range(start, start + size), perm, flags);
     SCOPE_LOCK(vma_list_mutex.for_write());
-    auto v = (void*) allocate(vma, start, size, search);
+    auto v = (void*) allocate(vma, start, size, search, flags & mmap_32bit);
     if (flags & mmap_populate) {
         populate_vma(vma, v, size);
     }
@@ -1243,7 +1247,7 @@ void* map_file(const void* addr, size_t size, unsigned flags, unsigned perm,
     auto *vma = f->mmap(addr_range(start, start + size), flags | mmap_file, perm, offset).release();
     void *v;
     WITH_LOCK(vma_list_mutex.for_write()) {
-        v = (void*) allocate(vma, start, size, search);
+        v = (void*) allocate(vma, start, size, search, flags & mmap_32bit);
         if (flags & mmap_populate) {
             populate_vma(vma, v, std::min(size, align_up(::size(f), page_size)));
         }
