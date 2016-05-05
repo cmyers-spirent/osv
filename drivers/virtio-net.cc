@@ -687,9 +687,9 @@ void net::txq::xmit_one_locked(void* _req)
 
     if (try_xmit_one_locked(req)) {
 
-        // We are going to poll - flush the pending packets
-        kick_pending();
         do {
+            // We are going to poll - flush the pending packets
+            kick_pending();
             if (!vqueue->used_ring_not_empty()) {
                 do {
                     using namespace osv::clock::literals;
@@ -864,4 +864,3 @@ hw_driver* net::probe(hw_device* dev)
 }
 
 } // namespace virtio
-
