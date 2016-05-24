@@ -1048,7 +1048,9 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * if we fail, drop the packet.  FIXME: invert the lock order so we don't
 	 * have to drop packets.
 	 */
-	if (tp->get_state() != TCPS_ESTABLISHED && ti_locked == TI_UNLOCKED) {
+	if ((tp->get_state() != TCPS_ESTABLISHED
+       || (thflags & (TH_SYN | TH_FIN | TH_RST) != 0))
+	   && ti_locked == TI_UNLOCKED) {
 		if (INP_INFO_TRY_WLOCK(&V_tcbinfo)) {
 			ti_locked = TI_WLOCKED;
 		} else {
@@ -1187,7 +1189,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	    th->th_seq == tp->rcv_nxt &&
 	    (thflags & (TH_SYN|TH_FIN|TH_RST|TH_URG|TH_ACK)) == TH_ACK &&
 	    tp->snd_nxt == tp->snd_max &&
-	    tiwin && tiwin == tp->snd_wnd && 
+	    tiwin && tiwin == tp->snd_wnd &&
 	    ((tp->t_flags & (TF_NEEDSYN|TF_NEEDFIN)) == 0) &&
 	    LIST_EMPTY(&tp->t_segq) &&
 	    ((to.to_flags & TOF_TS) == 0 ||
@@ -1262,7 +1264,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				if (tp->snd_una > tp->snd_recover &&
 				    th->th_ack <= tp->snd_recover)
 					tp->snd_recover = th->th_ack - 1;
-				
+
 				/*
 				 * Let the congestion control algorithm update
 				 * congestion control related information. This
@@ -1510,7 +1512,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				tp->t_flags |= TF_ECN_PERMIT;
 				TCPSTAT_INC(tcps_ecn_shs);
 			}
-			
+
 			/*
 			 * Received <SYN,ACK> in SYN_SENT[*] state.
 			 * Transitions:
@@ -1847,14 +1849,14 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	/*
 	 * If last ACK falls within this segment's sequence numbers,
 	 * record its timestamp.
-	 * NOTE: 
+	 * NOTE:
 	 * 1) That the test incorporates suggestions from the latest
 	 *    proposal of the tcplw@cray.com list (Braden 1993/04/26).
 	 * 2) That updating only on newer timestamps interferes with
 	 *    our earlier PAWS tests, so this check should be solely
 	 *    predicated on the sequence space of this segment.
-	 * 3) That we modify the segment boundary check to be 
-	 *        Last.ACK.Sent <= SEG.SEQ + SEG.Len  
+	 * 3) That we modify the segment boundary check to be
+	 *        Last.ACK.Sent <= SEG.SEQ + SEG.Len
 	 *    instead of RFC1323's
 	 *        Last.ACK.Sent < SEG.SEQ + SEG.Len,
 	 *    This modified check allows us to overcome RFC1323's
@@ -1969,13 +1971,15 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			tcp_sack_doack(tp, &to, th->th_ack);
 
 		if (th->th_ack <= tp->snd_una) {
-			if (tlen == 0 && tiwin == tp->snd_wnd) {
+			if (tlen == 0 && tiwin == tp->snd_wnd &&
+				!(thflags & TH_FIN)) {
 				TCPSTAT_INC(tcps_rcvdupack);
 				/*
 				 * If we have outstanding data (other than
 				 * a window probe), this is a completely
 				 * duplicate ack (ie, window info didn't
-				 * change), the ack is the biggest we've
+				 * change and FIN isn't set),
+				 * the ack is the biggest we've
 				 * seen and we've seen exactly our rexmt
 				 * threshhold of them, assume a packet
 				 * has been dropped and retransmit it.
@@ -2007,10 +2011,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					if ((tp->t_flags & TF_SACK_PERMIT) &&
 					    IN_FASTRECOVERY(tp->t_flags)) {
 						int awnd;
-						
+
 						/*
 						 * Compute the amount of data in flight first.
-						 * We can inject new data into the pipe iff 
+						 * We can inject new data into the pipe iff
 						 * we have less than 1/2 the original window's
 						 * worth of data in flight.
 						 */
@@ -3052,7 +3056,7 @@ tcp_mss(struct tcpcb *tp, int offer)
 	int mtuflags = 0;
 
 	KASSERT(tp != NULL, ("%s: tp == NULL", __func__));
-	
+
 	tcp_mss_update(tp, offer, -1, &metrics, &mtuflags);
 
 	mss = tp->t_maxseg;
@@ -3205,11 +3209,21 @@ tcp_net_channel_packet(tcpcb* tp, mbuf* m)
 	auto tlen = ip_len - (ip_size + (th->th_off << 2));
 	auto iptos = ip_hdr->ip_tos;
 	SOCK_LOCK_ASSERT(so);
-	bool want_close;
-	m_trim(m, ETHER_HDR_LEN + ip_len);
-	tcp_do_segment(m, th, so, tp, drop_hdrlen, tlen, iptos, TI_UNLOCKED, want_close);
-	// since a socket is still attached, we should not be closing
-	assert(!want_close);
+
+	if (tp->get_state() > TCPS_LISTEN) {
+		bool want_close;
+		m_trim(m, ETHER_HDR_LEN + ip_len);
+		tcp_do_segment(m, th, so, tp, drop_hdrlen, tlen, iptos, TI_UNLOCKED, want_close);
+		// since a socket is still attached, we should not be closing
+		assert(!want_close);
+	} else {
+		// We can't hand this packet off to tcp_do_segment due to the
+		// current connection state.  Drop the channel and handle the
+		// packet via the slow path.
+		tcp_teardown_net_channel(tp);
+		m_trim(m, ETHER_HDR_LEN);
+		tcp_input(m, ip_len);
+	}
 }
 
 static ipv4_tcp_conn_id tcp_connection_id(tcpcb* tp)
