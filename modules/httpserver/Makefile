@@ -32,13 +32,15 @@ STUB_CPP_FILES := $(wildcard stub/*.cc)
 OBJ_FILES := $(addprefix obj/,$(CPP_FILES:.cc=.o))
 STUB_FILES := $(addprefix obj/,$(STUB_CPP_FILES:.cc=.o))
 
-DYN_LIBS = -lpthread -ldl -L$(OSV_BUILD_PATH)/tools -ltools $(boost-libs) -lyaml-cpp
+DYN_LIBS = -lpthread -ldl -L$(OSV_BUILD_PATH)/tools -ltools $(boost-libs)
 
 ifeq ($(use_host),y)
-	DYN_LIBS += -lssl -lcrypto
+	DYN_LIBS += -lssl -lcrypto -lyamp-cpp
 else
+	INCLUDES += -I$(miscbase)/usr/include
 	DYN_LIBS += $(libs-dir)/libssl.so.10 \
-		$(libs-dir)/libcrypto.so.10
+		$(libs-dir)/libcrypto.so.10 \
+		$(libs-dir)/libyaml-cpp.so.0.5
 endif
 
 LIBS = $(DYN_LIBS) $(STATIC_LIBS)
