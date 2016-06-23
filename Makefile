@@ -20,21 +20,24 @@
 # isn't, for historical reasons, so we need to turn it on explicitly...
 .DELETE_ON_ERROR:
 ###########################################################################
+# Backward-compatibility hack to support the old "make ... image=..." image
+# building syntax, and pass it into scripts/build. We should eventually drop
+# this support and turn the deprecated messages into errors.
+compat_args=$(if $(usrskel), usrskel=$(usrskel),)
+compat_args+=$(if $(fs), fs=$(fs),)
 ifdef image
 #$(error Please use scripts/build to build images)
 $(info "make image=..." deprecated. Please use "scripts/build image=...".)
+default_target:
+	./scripts/build image=$(image) $(compat_args)
 endif
 ifdef modules
 #$(error Please use scripts/build to build images)
 $(info "make modules=..." deprecated. Please use "scripts/build modules=...".)
+default_target:
+	./scripts/build modules=$(modules) $(compat_args)
 endif
-
-# Ugly hack to support the old "make ... image=..." image building syntax, and
-# pass it into scripts/build. We should eventually get rid of this, and turn
-# the above deprecated messages into errors.
-ugly_backward_compatibility_hack: all
-	@test -n "$(image)" &&  ./scripts/build image=$(image) || :
-	@test -n "$(modules)" &&  ./scripts/build modules=$(modules) || :
+.PHONY: default_target
 
 ###########################################################################
 
@@ -137,10 +140,13 @@ java-targets := $(out)/java/jvm/java.so $(out)/java/jni/balloon.so $(out)/java/j
         $(out)/java/jni/stty.so $(out)/java/jni/tracepoint.so $(out)/java/jni/power.so $(out)/java/jni/monitor.so
 endif
 
-all: $(out)/loader.img $(java-targets)
+all: $(out)/loader.img $(java-targets) links
+.PHONY: all
+
+links:
 	$(call very-quiet, ln -nsf $(notdir $(out)) $(outlink))
 	$(call very-quiet, ln -nsf $(notdir $(out)) $(outlink2))
-.PHONY: all
+.PHONY: links
 
 check:
 	./scripts/build check
@@ -231,10 +237,10 @@ local-includes =
 INCLUDES = $(local-includes) -Iarch/$(arch) -I. -Iinclude  -Iarch/common
 INCLUDES += -isystem include/glibc-compat
 
-glibcbase = external/$(arch)/glibc.bin
-gccbase = external/$(arch)/gcc.bin
-miscbase = external/$(arch)/misc.bin
-jdkbase := $(shell find external/$(arch)/openjdk.bin/usr/lib/jvm \
+glibcbase = $(CURDIR)/external/$(arch)/glibc.bin
+gccbase = $(CURDIR)/external/$(arch)/gcc.bin
+miscbase = $(CURDIR)/external/$(arch)/misc.bin
+jdkbase := $(shell find $(CURDIR)/external/$(arch)/openjdk.bin/usr/lib/jvm \
                          -maxdepth 1 -type d -name 'java*')
 
 
@@ -384,25 +390,12 @@ tools := tools/mkfs/mkfs.so tools/cpiod/cpiod.so
 
 $(out)/tools/%.o: COMMON += -fPIC
 
-# TODO: The "ifconfig" and "lsroute" programs are only needed for the mgmt
-# module... Better move it out of the OSv core...
-tools += tools/ifconfig/ifconfig.so
-tools += tools/route/lsroute.so
-$(out)/tools/route/lsroute.so: EXTRA_LIBS = -L$(out)/tools/ -ltools
-$(out)/tools/route/lsroute.so: $(out)/tools/libtools.so
-$(out)/tools/ifconfig/ifconfig.so: EXTRA_LIBS = -L$(out)/tools/ -ltools
-$(out)/tools/ifconfig/ifconfig.so: $(out)/tools/libtools.so
-
 tools += tools/uush/uush.so
 tools += tools/uush/ls.so
 tools += tools/uush/mkdir.so
 
 tools += tools/mount/mount-nfs.so
 tools += tools/mount/umount.so
-
-# TODO: we only need this libtools for the httpserver module... Better
-# move it to its own module, it shouldn't be in the OSv core...
-tools += tools/libtools.so
 
 ifeq ($(arch),aarch64)
 # note that the bootfs.manifest entry for the uush image
@@ -1698,12 +1691,12 @@ objects += core/posix-aio.o
 
 #include $(src)/fs/build.mk:
 
-fs :=
+fs_objs :=
 
-fs +=	fs.o \
+fs_objs += fs.o \
 	unsupported.o
 
-fs +=	vfs/main.o \
+fs_objs += vfs/main.o \
 	vfs/kern_descrip.o \
 	vfs/kern_physio.o \
 	vfs/subr_uio.o \
@@ -1718,16 +1711,17 @@ fs +=	vfs/main.o \
 	vfs/vfs_fops.o \
 	vfs/vfs_dentry.o
 
-fs +=	ramfs/ramfs_vfsops.o \
+fs_objs += ramfs/ramfs_vfsops.o \
 	ramfs/ramfs_vnops.o
 
-fs +=	devfs/devfs_vnops.o \
-	devfs/device.o \
-	devfs/device_ioctl.o
+fs_objs += devfs/devfs_vnops.o \
+	devfs/device.o
 
-fs +=	procfs/procfs_vnops.o
+fs_objs += devfs/device_ioctl.o
 
-objects += $(addprefix fs/, $(fs))
+fs_objs += procfs/procfs_vnops.o
+
+objects += $(addprefix fs/, $(fs_objs))
 objects += $(addprefix libc/, $(libc))
 objects += $(addprefix musl/src/, $(musl))
 
@@ -1801,7 +1795,11 @@ objects += $(addprefix fs/nfs/, $(nfs_o))
 $(out)/dummy-shlib.so: $(out)/dummy-shlib.o
 	$(call quiet, $(CXX) -nodefaultlibs -shared $(gcc-sysroot) -o $@ $^, LINK $@)
 
-$(out)/loader.elf: $(out)/arch/$(arch)/boot.o arch/$(arch)/loader.ld $(out)/loader.o $(out)/runtime.o $(drivers:%=$(out)/%) $(objects:%=$(out)/%) $(out)/bootfs.o $(out)/dummy-shlib.so $(nfs-lib)
+stage1_targets = $(out)/arch/$(arch)/boot.o $(out)/loader.o $(out)/runtime.o $(drivers:%=$(out)/%) $(objects:%=$(out)/%) $(out)/dummy-shlib.so $(nfs-lib)
+stage1: $(stage1_targets) links
+.PHONY: stage1
+
+$(out)/loader.elf: $(stage1_targets) arch/$(arch)/loader.ld $(out)/bootfs.o
 	$(call quiet, $(LD) -o $@ --defsym=OSV_KERNEL_BASE=$(kernel_base) \
 		-Bdynamic --export-dynamic --eh-frame-hdr --enable-new-dtags \
 	    $(^:%.ld=-T %.ld) \
@@ -1852,10 +1850,6 @@ $(out)/tools/mkfs/mkfs.so: $(out)/tools/mkfs/mkfs.o $(out)/libzfs.so
 $(out)/tools/cpiod/cpiod.so: $(out)/tools/cpiod/cpiod.o $(out)/tools/cpiod/cpio.o $(out)/libzfs.so
 	$(makedir)
 	$(call quiet, $(CC) $(CFLAGS) -o $@ $(out)/tools/cpiod/cpiod.o $(out)/tools/cpiod/cpio.o -L$(out) -lzfs, LINK cpiod.so)
-
-$(out)/tools/libtools.so: $(out)/tools/route/route_info.o $(out)/tools/ifconfig/network_interface.o
-	$(makedir)
-	 $(call quiet, $(CC) $(CFLAGS) -shared -o $(out)/tools/libtools.so $^, LINK libtools.so)
 
 ################################################################################
 # The dependencies on header files are automatically generated only after the

@@ -211,13 +211,29 @@ NO_SYS(int execvp(const char *, char *const []));
 
 int mlockall(int flags)
 {
+    WARN_STUBBED();
     return 0;
 }
 
 int munlockall(void)
 {
+    WARN_STUBBED();
     return 0;
 }
+
+int mlock(const void*, size_t)
+{
+    WARN_STUBBED();
+    return 0;
+}
+
+int munlock(const void*, size_t)
+{
+    WARN_STUBBED();
+    return 0;
+}
+
+NO_SYS(int mkfifo(const char*, mode_t));
 
 int posix_fadvise(int fd, off_t offset, off_t len, int advice)
 {

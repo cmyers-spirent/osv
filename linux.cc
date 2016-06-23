@@ -12,6 +12,7 @@
 #include <osv/sched.hh>
 #include <osv/mutex.h>
 #include <osv/waitqueue.hh>
+#include <osv/stubbing.hh>
 
 #include <syscall.h>
 #include <stdarg.h>
@@ -285,7 +286,9 @@ long syscall(long number, ...)
     SYSCALL2(munmap, void *, size_t);
     }
 
-    abort("syscall(): unimplemented system call %d. Aborting.\n", number);
+    debug_always("syscall(): unimplemented system call %d\n", number);
+    errno = ENOSYS;
+    return -1;
 }
 long __syscall(long number, ...)  __attribute__((alias("syscall")));
 
