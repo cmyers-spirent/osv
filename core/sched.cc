@@ -383,11 +383,10 @@ void cpu::send_wakeup_ipi()
 void cpu::do_idle()
 {
     do {
-#if 0
         idle_poll_lock_type idle_poll_lock{*this};
         WITH_LOCK(idle_poll_lock) {
             // spin for a bit before halting
-            for (unsigned ctr = 0; ctr < 10000; ++ctr) {
+            for (unsigned ctr = 0; ctr < 1000; ++ctr) {
                 // FIXME: can we pull threads from loaded cpus?
                 handle_incoming_wakeups();
                 if (!runqueue.empty()) {
@@ -395,7 +394,6 @@ void cpu::do_idle()
                 }
             }
         }
-#endif
         std::unique_lock<irq_lock_type> guard(irq_lock);
         handle_incoming_wakeups();
         if (!runqueue.empty()) {
