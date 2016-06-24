@@ -53,6 +53,7 @@ int blk::_instance = 0;
 
 
 struct blk_priv {
+    devop_strategy_t strategy;
     blk* drv;
 };
 
@@ -62,7 +63,6 @@ blk_strategy(struct bio *bio)
     struct blk_priv *prv = reinterpret_cast<struct blk_priv*>(bio->bio_dev->private_data);
 
     trace_virtio_blk_strategy(bio);
-    bio->bio_offset += bio->bio_dev->offset;
     return prv->drv->make_request(bio);
 }
 
@@ -89,7 +89,7 @@ static struct devops blk_devops {
     blk_write,
     no_ioctl,
     no_devctl,
-    blk_strategy,
+    multiplex_strategy,
 };
 
 struct driver blk_driver = {
@@ -148,8 +148,10 @@ blk::blk(pci::device& pci_dev)
 
     dev = device_create(&blk_driver, dev_name.c_str(), D_BLK);
     prv = reinterpret_cast<struct blk_priv*>(dev->private_data);
+    prv->strategy = blk_strategy;
     prv->drv = this;
     dev->size = prv->drv->size();
+    dev->max_io_size = (_config.seg_max - 1) * mmu::page_size;
     read_partition_table(dev);
 
     debugf("virtio-blk: Add blk device instances %d as %s, devsize=%lld\n", _id, dev_name.c_str(), dev->size);
