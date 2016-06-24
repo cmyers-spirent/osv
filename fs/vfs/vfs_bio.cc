@@ -129,8 +129,9 @@ rw_buf(struct buf *bp, int rw)
 	bio->bio_offset = bp->b_blkno << 9;
 	bio->bio_bcount = BSIZE;
 
-	bio->bio_dev->driver->devops->strategy(bio);
-	ret = bio_wait(bio);
+	if ((ret = bio->bio_dev->driver->devops->strategy(bio)) == 0) {
+		ret = bio_wait(bio);
+	}
 
 	destroy_bio(bio);
 	return ret;

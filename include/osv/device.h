@@ -61,24 +61,24 @@ struct devinfo {
 #define D_REM		0x00000004	/* removable device */
 #define D_TTY		0x00000010	/* tty device */
 
-typedef int (*devop_open_t)   (struct device *, int);
-typedef int (*devop_close_t)  (struct device *);
-typedef int (*devop_read_t)   (struct device *, struct uio *, int);
-typedef int (*devop_write_t)  (struct device *, struct uio *, int);
-typedef int (*devop_ioctl_t)  (struct device *, u_long, void *);
-typedef int (*devop_devctl_t) (struct device *, u_long, void *);
-typedef void (*devop_strategy_t)(struct bio *);
+typedef int (*devop_open_t)    (struct device *, int);
+typedef int (*devop_close_t)   (struct device *);
+typedef int (*devop_read_t)    (struct device *, struct uio *, int);
+typedef int (*devop_write_t)   (struct device *, struct uio *, int);
+typedef int (*devop_ioctl_t)   (struct device *, u_long, void *);
+typedef int (*devop_devctl_t)  (struct device *, u_long, void *);
+typedef int (*devop_strategy_t)(struct bio *);
 
 /*
  * Device operations
  */
 struct devops {
-	devop_open_t	open;
-	devop_close_t	close;
-	devop_read_t	read;
-	devop_write_t	write;
-	devop_ioctl_t	ioctl;
-	devop_devctl_t	devctl;
+	devop_open_t	 open;
+	devop_close_t	 close;
+	devop_read_t	 read;
+	devop_write_t	 write;
+	devop_ioctl_t	 ioctl;
+	devop_devctl_t	 devctl;
 	devop_strategy_t strategy;
 };
 
@@ -199,7 +199,7 @@ int	 bdev_write(struct device *dev, struct uio *uio, int ioflags);
 
 int	enodev(void);
 int	nullop(void);
-void multiplex_strategy(struct bio *);
+int	multiplex_strategy(struct bio *);
 
 int	physio(struct device *dev, struct uio *uio, int ioflags);
 

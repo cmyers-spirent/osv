@@ -56,14 +56,14 @@ struct blk_priv {
     blk* drv;
 };
 
-static void
+static int
 blk_strategy(struct bio *bio)
 {
     struct blk_priv *prv = reinterpret_cast<struct blk_priv*>(bio->bio_dev->private_data);
 
     trace_virtio_blk_strategy(bio);
     bio->bio_offset += bio->bio_dev->offset;
-    prv->drv->make_request(bio);
+    return prv->drv->make_request(bio);
 }
 
 static int

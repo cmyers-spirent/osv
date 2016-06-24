@@ -38,7 +38,7 @@ bdev_read(struct device *dev, struct uio *uio, int ioflags)
 		return EINVAL;
 	if (uio->uio_resid == 0)
 		return 0;
-    
+
 	while (uio->uio_resid > 0) {
 		ret = bread(dev, uio->uio_offset >> 9, &bp);
 		if (ret)
@@ -75,7 +75,7 @@ bdev_write(struct device *dev, struct uio *uio, int ioflags)
 		return EINVAL;
 	if (uio->uio_resid == 0)
 		return 0;
-    
+
 	while (uio->uio_resid > 0) {
 		bp = getblk(dev, uio->uio_offset >> 9);
 
@@ -104,7 +104,7 @@ physio(struct device *dev, struct uio *uio, int ioflags)
 		return EINVAL;
 	if (uio->uio_resid == 0)
 		return 0;
-    
+
 	while (uio->uio_resid > 0) {
 		struct iovec *iov = uio->uio_iov;
 
@@ -125,17 +125,18 @@ physio(struct device *dev, struct uio *uio, int ioflags)
 		bio->bio_offset = uio->uio_offset;
 		bio->bio_bcount = uio->uio_resid;
 
-		dev->driver->devops->strategy(bio);
+		if ((ret = dev->driver->devops->strategy(bio)) == 0) {
+			ret = bio_wait(bio);
+		}
 
-		ret = bio_wait(bio);
 		destroy_bio(bio);
 		if (ret)
 			return ret;
 
-	        uio->uio_iov++;
-        	uio->uio_iovcnt--;
-        	uio->uio_resid -= iov->iov_len;
-        	uio->uio_offset += iov->iov_len;
+		uio->uio_iov++;
+		uio->uio_iovcnt--;
+		uio->uio_resid -= iov->iov_len;
+		uio->uio_offset += iov->iov_len;
 	}
 
 	return 0;

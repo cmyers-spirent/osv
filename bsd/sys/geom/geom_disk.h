@@ -39,7 +39,7 @@
 
 #include <porting/mmu.h>
 
-#ifdef _KERNEL 
+#ifdef _KERNEL
 
 
 typedef int dumper_t(
@@ -58,7 +58,7 @@ struct disk;
 
 typedef	int	disk_open_t(struct disk *);
 typedef	int	disk_close_t(struct disk *);
-typedef	void	disk_strategy_t(struct bio *bp);
+typedef	int	disk_strategy_t(struct bio *bp);
 typedef	int	disk_getattr_t(struct bio *bp);
 typedef	void	disk_gone_t(struct disk *);
 typedef	int	disk_ioctl_t(struct disk *, u_long cmd, void *data,

@@ -332,9 +332,13 @@ static int bio_queue_strategy(struct aio_op *op)
     bio->bio_caller1 = op;
     bio->bio_done = bio_completed;
 
-    dev->driver->devops->strategy(bio);
-
-    return 0;
+    /*
+     * This return value is used to set errno in case of failure.
+     * Unfortunately, the strategy functions can return all sorts of things
+     * that aio ops should not return.  So, return this generic error
+     * code instead.
+     */
+    return (dev->driver->devops->strategy(bio) == 0 ? 0 : EINVAL);
 }
 
 static int default_queue_strategy(struct aio_op *op)

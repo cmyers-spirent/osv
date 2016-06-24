@@ -34,13 +34,13 @@ struct ide_priv {
     ide_drive* drv;
 };
 
-static void
+static int
 ide_strategy(struct bio *bio)
 {
     struct ide_priv *prv = reinterpret_cast<struct ide_priv*>(bio->bio_dev->private_data);
 
     bio->bio_offset += bio->bio_dev->offset;
-    prv->drv->make_request(bio);
+    return prv->drv->make_request(bio);
 }
 
 static int
@@ -141,7 +141,7 @@ int ide_drive::make_request(struct bio* bio)
         auto *base = bio->bio_data;
         auto sector = bio->bio_offset / SECTOR_SIZE;
         auto count = bio->bio_bcount / SECTOR_SIZE;
-        assert(offset == 0); // only sector aligned ptr is supported 
+        assert(offset == 0); // only sector aligned ptr is supported
         assert(bio->bio_bcount <= 131072); // less than 128k
 
         while (len != bio->bio_bcount) {

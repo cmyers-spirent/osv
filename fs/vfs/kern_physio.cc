@@ -93,7 +93,7 @@ static void multiplex_bio_done(struct bio *b)
 		biodone(bio, true);
 }
 
-void multiplex_strategy(struct bio *bio)
+int multiplex_strategy(struct bio *bio)
 {
 	struct device *dev = bio->bio_dev;
 	devop_strategy_t strategy = *((devop_strategy_t *)dev->private_data);
@@ -107,8 +107,7 @@ void multiplex_strategy(struct bio *bio)
 	assert(strategy != nullptr);
 
 	if (len <= dev->max_io_size) {
-		strategy(bio);
-		return;
+		return strategy(bio);
 	}
 
 	// It is better to initialize the refcounter beforehand, specially because we can
@@ -117,7 +116,8 @@ void multiplex_strategy(struct bio *bio)
 	// finished, and when it drops its refcount to 0, we consider the main bio finished.
 	refcount_init(&bio->bio_refcnt, (len / dev->max_io_size) + !!(len % dev->max_io_size));
 
-	while (len > 0) {
+	int error = 0;
+	while (len > 0 && !error) {
 		uint64_t req_size = MIN(len, dev->max_io_size);
 		struct bio *b = alloc_bio();
 
@@ -131,9 +131,28 @@ void multiplex_strategy(struct bio *bio)
 		b->bio_private = bio->bio_private;
 		b->bio_done = multiplex_bio_done;
 
-		strategy(b);
-		buf += req_size;
-		offset += req_size;
-		len -= req_size;
+		if ((error = strategy(b)) != 0) {
+			// queueing error; destroy the current request
+			// and store the error in the original
+			destroy_bio(b);
+			WITH_LOCK(bio->bio_mutex) {
+				bio->bio_flags |= BIO_ERROR;
+			}
+		} else {
+			buf += req_size;
+			offset += req_size;
+			len -= req_size;
+		}
 	}
+
+	while (len > 0) {
+		assert(error);	// only here because of an error
+		len -= MIN(len, dev->max_io_size);
+		// drop the refcount for all the requests we expected to create
+		// but didn't
+		if (refcount_release(&bio->bio_refcnt))
+			biodone(bio, true);
+	}
+
+  return error;
 }

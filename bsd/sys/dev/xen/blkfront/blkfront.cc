@@ -138,7 +138,7 @@ static int blkif_close(struct disk *dp);
 static int blkif_ioctl(struct disk *dp, u_long cmd, void *addr, int flag, struct thread *td);
 static int blkif_queue_request(struct xb_softc *sc, struct xb_command *cm);
 static void xb_quiesce(struct xb_softc *sc);
-static void xb_strategy(struct bio *bp);
+static int xb_strategy(struct bio *bp);
 
 // In order to quiesce the device during kernel dumps, outstanding requests to
 // DOM0 for disk reads/writes need to be accounted for.
@@ -262,7 +262,7 @@ xlvbd_add(struct xb_softc *sc, blkif_sector_t sectors,
  * Read/write routine for a buffer.  Finds the proper unit, place it on
  * the sortq and kick the controller.
  */
-static void
+static int
 xb_strategy(struct bio *bp)
 {
     struct xb_softc    *sc = (xb_softc *)bp->bio_dev->softc;
@@ -273,7 +273,7 @@ xb_strategy(struct bio *bp)
         bp->bio_error = EINVAL;
         bp->bio_resid = bp->bio_bcount;
         biodone(bp, false);
-        return;
+        return EINVAL;
     }
 
     if ((bp->bio_cmd == BIO_FLUSH) &&
@@ -281,7 +281,7 @@ xb_strategy(struct bio *bp)
         bp->bio_error = EOPNOTSUPP;
         bp->bio_resid = bp->bio_bcount;
         biodone(bp, false);
-        return;
+        return EOPNOTSUPP;
     }
 
     /*
@@ -293,7 +293,7 @@ xb_strategy(struct bio *bp)
     xb_startio(sc);
 
     mutex_unlock(&xsc->xb_io_lock);
-    return;
+    return 0;
 }
 
 static void

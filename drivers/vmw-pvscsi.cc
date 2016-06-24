@@ -36,10 +36,10 @@ struct pvscsi_priv {
     u16 lun;
 };
 
-static void pvscsi_strategy(struct bio *bio)
+static int pvscsi_strategy(struct bio *bio)
 {
     auto prv = pvscsi::get_priv(bio);
-    prv->drv->make_request(bio);
+    return prv->drv->make_request(bio);
 }
 
 static int pvscsi_read(struct device *dev, struct uio *uio, int ioflags)

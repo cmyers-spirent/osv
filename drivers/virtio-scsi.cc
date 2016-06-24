@@ -41,10 +41,10 @@ struct scsi_priv {
     u16 lun;
 };
 
-static void scsi_strategy(struct bio *bio)
+static int scsi_strategy(struct bio *bio)
 {
     auto prv = scsi::get_priv(bio);
-    prv->drv->make_request(bio);
+    return prv->drv->make_request(bio);
 }
 
 static int scsi_read(struct device *dev, struct uio *uio, int ioflags)

@@ -23,10 +23,10 @@ struct hba_priv {
     class port *port;
 };
 
-static void hba_strategy(struct bio *bio)
+static int hba_strategy(struct bio *bio)
 {
     auto prv = hba::get_priv(bio);
-    prv->port->make_request(bio);
+    return prv->port->make_request(bio);
 }
 
 static int hba_read(struct device *dev, struct uio *uio, int ioflags)
