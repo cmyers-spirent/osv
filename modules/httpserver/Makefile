@@ -37,7 +37,6 @@ DYN_LIBS = -lpthread -ldl -L../libtools -ltools $(boost-libs) -lyaml-cpp
 ifeq ($(use_host),y)
 	DYN_LIBS += -lssl -lcrypto
 else
-	INCLUDES += -I$(miscbase)/usr/include
 	DYN_LIBS += $(libs-dir)/libssl.so.10 \
 		$(libs-dir)/libcrypto.so.10
 endif
