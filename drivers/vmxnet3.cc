@@ -833,7 +833,14 @@ void vmxnet3_rxqueue::receive()
         if (rxcd->layout->sop) {
             assert(rxd->layout->btype == btype::head);
             assert((idx % 1) == 0);
-            assert(_m_currpkt_head == nullptr);
+            //assert(_m_currpkt_head == nullptr);
+
+            if (_m_currpkt_head) {
+                /* Guess the hypervisor lost a descriptor? */
+                m_freem(_m_currpkt_head);
+                _m_currpkt_head = _m_currpkt_tail = nullptr;
+                stats.rx_drops++;
+            }
 
             if (length == 0) {
                 discard(rid, idx);
