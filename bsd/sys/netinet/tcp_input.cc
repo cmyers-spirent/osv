@@ -3201,6 +3201,15 @@ tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 static void
 tcp_net_channel_packet(tcpcb* tp, mbuf* m)
 {
+	if (tp->get_state() <= TCPS_LISTEN) {
+		// We can't hand this packet off to tcp_do_segment due to the
+		// current connection state.	Drop the channel and handle the
+		// packet via the slow path.
+		tcp_teardown_net_channel(tp);
+		netisr_dispatch(NETISR_ETHER, m);
+		return;
+	}
+
 	log_packet_handling(m, NETISR_ETHER);
 	caddr_t start = m->m_hdr.mh_data;
 	auto h = start;
@@ -3219,20 +3228,11 @@ tcp_net_channel_packet(tcpcb* tp, mbuf* m)
 	auto iptos = ip_hdr->ip_tos;
 	SOCK_LOCK_ASSERT(so);
 
-	if (tp->get_state() > TCPS_LISTEN) {
-		bool want_close;
-		m_trim(m, ETHER_HDR_LEN + ip_len);
-		tcp_do_segment(m, th, so, tp, drop_hdrlen, tlen, iptos, TI_UNLOCKED, want_close);
-		// since a socket is still attached, we should not be closing
-		assert(!want_close);
-	} else {
-		// We can't hand this packet off to tcp_do_segment due to the
-		// current connection state.  Drop the channel and handle the
-		// packet via the slow path.
-		tcp_teardown_net_channel(tp);
-		m_trim(m, ETHER_HDR_LEN);
-		tcp_input(m, ip_len);
-	}
+	bool want_close;
+	m_trim(m, ETHER_HDR_LEN + ip_len);
+	tcp_do_segment(m, th, so, tp, drop_hdrlen, tlen, iptos, TI_UNLOCKED, want_close);
+	// since a socket is still attached, we should not be closing
+	assert(!want_close);
 }
 
 static ipv4_tcp_conn_id tcp_connection_id(tcpcb* tp)
