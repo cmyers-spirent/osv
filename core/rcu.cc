@@ -16,6 +16,7 @@
 #include <osv/migration-lock.hh>
 #include <osv/wait_record.hh>
 #include <osv/mempool.hh>
+#include <lockfree/ring.hh>
 
 namespace osv {
 
@@ -27,12 +28,8 @@ namespace rcu {
 
 mutex mtx;
 
-struct rcu_defer_queue {
-    int buf; // double-buffer: 0 or 1
-    std::array<std::function<void ()>, 2000> callbacks[2];
-    unsigned int ncallbacks[2];
-};
-static PERCPU(rcu_defer_queue, percpu_callbacks);
+typedef ring_spsc<std::function<void ()>, 2048> rcu_defer_ring;
+static PERCPU(rcu_defer_ring, percpu_callbacks);
 
 class cpu_quiescent_state_thread {
 public:
@@ -120,18 +117,19 @@ void cpu_quiescent_state_thread::do_work()
         bool toclean = false;
         WITH_LOCK(preempt_lock) {
             auto p = &*percpu_callbacks;
-            if (p->ncallbacks[p->buf]) {
+            if (!p->empty()) {
                 toclean = true;
-                p->buf = !p->buf;
+            } else {
+                // rcu defer ring is now empty.  If an rcu_defer() is waiting for
+                // buffer room, let it know.
+                auto q = *percpu_waiting_defers;
+                while (q) {
+                    auto next = q->next;
+                    q->wake();
+                    q = next;
+                }
+                *percpu_waiting_defers = nullptr;
             }
-            // If an rcu_defer() is waiting for buffer room, let it know.
-            auto q = *percpu_waiting_defers;
-            while (q) {
-                auto next = q->next;
-                q->wake();
-                q = next;
-            }
-            *percpu_waiting_defers = nullptr;
         }
         if (toclean) {
             auto g = next_generation.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -164,13 +162,9 @@ void cpu_quiescent_state_thread::do_work()
             // Finally all_at_generation(cqsts, g), so can clean up
             _requested.store(false, std::memory_order_relaxed);
             auto p = &*percpu_callbacks;
-            auto b = !p->buf;
-            auto &callbacks = p->callbacks[b];
-            auto ncallbacks = p->ncallbacks[b];
-            p->ncallbacks[b] = 0;
-            for (unsigned i = 0; i < ncallbacks; i++) {
-                (callbacks[i])();
-                callbacks[i] = nullptr;
+            std::function<void ()> f;
+            while (p->pop(f)) {
+                f();
             }
         } else {
             // Wait until we have a generation request from another CPU who
@@ -178,7 +172,7 @@ void cpu_quiescent_state_thread::do_work()
             sched::thread::wait_until([=] {
                 return (_generation.load(std::memory_order_relaxed) <
                         _request.load(std::memory_order_relaxed)) ||
-                        percpu_callbacks->ncallbacks[percpu_callbacks->buf]; });
+                        !percpu_callbacks->empty(); });
             auto r = _request.load(std::memory_order_relaxed);
             if (_generation.load(std::memory_order_relaxed) < r) {
                 set_generation(r);
@@ -195,11 +189,10 @@ void rcu_defer(std::function<void ()>&& func)
 {
     WITH_LOCK(preempt_lock) {
         auto p = &*percpu_callbacks;
-        while (p->ncallbacks[p->buf] == p->callbacks[p->buf].size()) {
-            // We're out of room. Wait for the cleanup on this CPU to switch
-            // buffers. Make sure to re-awake on the same CPU.
-            // FIXME: We have a starvation possibility: another thread looping
-            // on rcu_defer() can cause us to always find a full queue.
+
+        while (!p->emplace(func)) {
+            // We're out of room.  Wait for the cleanup on this CPU to
+            // free some slots.  Make sure to re-awake on the same CPU.
             wait_record wr(sched::thread::current());
             wr.next = *percpu_waiting_defers;
             *percpu_waiting_defers = &wr;
@@ -211,8 +204,6 @@ void rcu_defer(std::function<void ()>&& func)
             }
             assert (p == &*percpu_callbacks);
         }
-        auto b = p->buf;
-        p->callbacks[b][p->ncallbacks[b]++] = std::move(func);
     }
 }
 
