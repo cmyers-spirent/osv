@@ -920,6 +920,10 @@ int pthread_setname_np(pthread_t p, const char* name)
 
 int pthread_getname_np(pthread_t p, char *name, size_t length)
 {
+    if (!p) {
+        return EINVAL;
+    }
+
     auto s = pthread::from_libc(p)->_thread.name();
     if (length <= s.size()) {  // name must be NULL terminated hence,
         return ERANGE;         // length must be > thread name
