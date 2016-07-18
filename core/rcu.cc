@@ -29,6 +29,8 @@ namespace rcu {
 mutex mtx;
 
 typedef ring_spsc<std::function<void ()>, 2048> rcu_defer_ring;
+static constexpr size_t defer_wake_threshold = 1024;
+
 static PERCPU(rcu_defer_ring, percpu_callbacks);
 
 class cpu_quiescent_state_thread {
@@ -190,6 +192,10 @@ void rcu_defer(std::function<void ()>&& func)
     WITH_LOCK(preempt_lock) {
         auto p = &*percpu_callbacks;
 
+        if (p->size() >= defer_wake_threshold) {
+            (*percpu_quiescent_state_thread).wake();
+        }
+
         while (!p->emplace(func)) {
             // We're out of room.  Wait for the cleanup on this CPU to
             // free some slots.  Make sure to re-awake on the same CPU.
@@ -198,7 +204,6 @@ void rcu_defer(std::function<void ()>&& func)
             *percpu_waiting_defers = &wr;
             WITH_LOCK(migration_lock) {
                 DROP_LOCK(preempt_lock) {
-                    (*percpu_quiescent_state_thread).wake();
                     wr.wait();
                 }
             }
