@@ -187,7 +187,9 @@ public:
                 epoll_event& evt = found->second;
                 int active = 0;
                 if (evt.events) {
+                    fhold(key._file);
                     active = key._file->poll(events_epoll_to_poll(evt.events));
+                    fdrop(key._file);
                 }
                 active = events_poll_to_epoll(active);
                 if (!active || (evt.events & EPOLLET)) {
