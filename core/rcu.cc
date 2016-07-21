@@ -28,8 +28,8 @@ namespace rcu {
 
 mutex mtx;
 
-typedef ring_spsc<std::function<void ()>, 2048> rcu_defer_ring;
-static constexpr size_t defer_wake_threshold = 1024;
+typedef ring_spsc<std::function<void ()>, 4096> rcu_defer_ring;
+static constexpr size_t defer_wake_threshold = 2048;
 
 static PERCPU(rcu_defer_ring, percpu_callbacks);
 
