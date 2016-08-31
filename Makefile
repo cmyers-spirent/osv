@@ -136,7 +136,8 @@ very-quiet = $(if $V, $1, @$1)
 ifeq ($(arch),aarch64)
 java-targets :=
 else
-java-targets := $(out)/java/jvm/java.so $(out)/java/jni/balloon.so $(out)/java/jni/elf-loader.so $(out)/java/jni/networking.so \
+java-targets := $(out)/java/jvm/java.so $(out)/java/jvm/java_non_isolated.so \
+	$(out)/java/jni/balloon.so $(out)/java/jni/elf-loader.so $(out)/java/jni/networking.so \
         $(out)/java/jni/stty.so $(out)/java/jni/tracepoint.so $(out)/java/jni/power.so $(out)/java/jni/monitor.so
 endif
 
@@ -261,6 +262,14 @@ INCLUDES += -isystem $(libfdt_base)
 endif
 
 INCLUDES += $(boost-includes)
+ifeq ($(gcc_include_env), host)
+# Starting in Gcc 6, the standard C++ header files (which we do not change)
+# must precede in the include path the C header files (which we replace).
+# This is explained in https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70722.
+# So we are forced to list here (before include/api) the system's default
+# C++ include directories, though they are already in the default search path.
+INCLUDES += $(shell $(CXX) -E -xc++ - -v </dev/null 2>&1 | awk '/^End/ {exit} /^ .*c\+\+/ {print "-isystem" $$0}')
+endif
 INCLUDES += -isystem include/api
 INCLUDES += -isystem include/api/$(arch)
 ifeq ($(gcc_include_env), external)
@@ -368,6 +377,10 @@ $(out)/%.o: %.c | generated-headers
 	$(makedir)
 	$(call quiet, $(CC) $(CFLAGS) -c -o $@ $<, CC $*.c)
 
+$(out)/java/jvm/java_non_isolated.o: java/jvm/java.cc | generated-headers
+	$(makedir)
+	$(call quiet, $(CXX) $(CXXFLAGS) -DRUN_JAVA_NON_ISOLATED -o $@ -c java/jvm/java.cc, CXX $<)
+
 $(out)/%.o: %.S
 	$(makedir)
 	$(call quiet, $(CXX) $(CXXFLAGS) $(ASFLAGS) -c -o $@ $<, AS $*.s)
@@ -465,7 +478,7 @@ acpi-defines = -DACPI_MACHINE_WIDTH=64 -DACPI_USE_LOCAL_CACHE
 acpi-source := $(shell find external/$(arch)/acpica/source/components -type f -name '*.c')
 acpi = $(patsubst %.c, %.o, $(acpi-source))
 
-$(acpi:%=$(out)/%): CFLAGS += -fno-strict-aliasing -Wno-strict-aliasing
+$(acpi:%=$(out)/%): CFLAGS += -fno-strict-aliasing
 
 endif # x64
 
@@ -492,8 +505,17 @@ $(out)/loader.img: $(out)/preboot.bin $(out)/loader-stripped.elf
 
 endif # aarch64
 
-$(out)/bsd/sys/crypto/sha2/sha2.o: CFLAGS+=-Wno-strict-aliasing
-$(out)/bsd/sys/crypto/rijndael/rijndael-api-fst.o: CFLAGS+=-Wno-strict-aliasing
+$(out)/bsd/sys/crypto/rijndael/rijndael-api-fst.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/crypto/sha2/sha2.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/net/route.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/net/rtsock.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/net/in.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/net/if.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet/in_rmx.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet/ip_input.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet/in.o: COMMON+=-fno-strict-aliasing
+
+$(out)/bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs/metaslab.o: COMMON+=-Wno-tautological-compare
 
 bsd  = bsd/init.o
 bsd += bsd/net.o
@@ -745,7 +767,7 @@ $(zfs:%=$(out)/%): CFLAGS+= \
 	-Ibsd/sys/cddl/contrib/opensolaris/common/zfs
 
 $(solaris:%=$(out)/%): CFLAGS+= \
-	-Wno-strict-aliasing \
+	-fno-strict-aliasing \
 	-Wno-unknown-pragmas \
 	-Wno-unused-variable \
 	-Wno-switch \
@@ -1339,7 +1361,7 @@ musl += network/getservbyname.o
 musl += network/getservbyport_r.o
 musl += network/getservbyport.o
 musl += network/getifaddrs.o
-musl += network/if_nameindex.o
+libc += network/if_nameindex.o
 musl += network/if_freenameindex.o
 
 musl += prng/rand.o
@@ -1488,6 +1510,7 @@ musl += stdio/vwprintf.o
 musl += stdio/vwscanf.o
 musl += stdio/wprintf.o
 musl += stdio/wscanf.o
+libc += stdio/printf-hooks.o
 
 musl += stdlib/abs.o
 musl += stdlib/atof.o

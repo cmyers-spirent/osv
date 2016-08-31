@@ -23,6 +23,7 @@ autodepend = -MD -MT $@ -MP
 
 INCLUDES = -I$(src)/arch/$(ARCH) -I$(src) -I$(src)/include \
 	-I$(src)/arch/common -isystem $(src)/include/glibc-compat \
+	$(shell $(CXX) -E -xc++ - -v </dev/null 2>&1 | awk '/^End/ {exit} /^ .*c\+\+/ {print "-isystem" $$0}') \
 	-isystem $(src)/include/api -isystem $(src)/include/api/$(ARCH) \
 	-isystem $(out)/gen/include
 
@@ -82,7 +83,7 @@ tests := tst-pthread.so misc-ramdisk.so tst-vblk.so tst-bsd-evh.so \
 	tst-fstatat.so misc-reboot.so tst-fcntl.so payload-namespace.so \
 	tst-namespace.so tst-without-namespace.so payload-env.so \
 	payload-merge-env.so misc-execve.so misc-execve-payload.so misc-mutex2.so \
-	tst-pthread-setcancelstate.so tst-syscall.so
+	tst-pthread-setcancelstate.so tst-syscall.so tst-pin.so tst-run.so
 
 #	libstatic-thread-variable.so tst-static-thread-variable.so \
 

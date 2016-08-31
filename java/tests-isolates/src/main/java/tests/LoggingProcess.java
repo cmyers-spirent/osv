@@ -1,6 +1,6 @@
 package tests;
 
-import io.osv.ContextIsolator;
+import io.osv.isolated.IsolatedJvm;
 
 import java.util.concurrent.CyclicBarrier;
 import java.util.logging.FileHandler;
@@ -16,7 +16,7 @@ import java.util.logging.SimpleFormatter;
  */
 public class LoggingProcess {
     public static void main(String[] args) throws Throwable {
-        CyclicBarrier barrier = (CyclicBarrier) ContextIsolator.getInstance().receive();
+        CyclicBarrier barrier = (CyclicBarrier) IsolatedJvm.getInstance().receive();
 
         String logFileName = args[0];
         String loggerName = args[1];

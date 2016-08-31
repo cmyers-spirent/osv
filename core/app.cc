@@ -16,6 +16,8 @@
 #include <errno.h>
 #include <algorithm>
 #include <boost/range/algorithm/transform.hpp>
+#include <osv/wait_record.hh>
+#include "libc/pthread.hh"
 
 using namespace boost::range;
 
@@ -135,6 +137,17 @@ void run(const std::vector<std::string>& args) {
     application::run(args);
 }
 
+shared_app_t application::run_and_join(const std::string& command,
+                      const std::vector<std::string>& args,
+                      bool new_program,
+                      const std::unordered_map<std::string, std::string> *env,
+                      waiter* setup_waiter)
+{
+    auto app = std::make_shared<application>(command, args, new_program, env);
+    app->start_and_join(setup_waiter);
+    return app;
+}
+
 application::application(const std::string& command,
                      const std::vector<std::string>& args,
                      bool new_program,
@@ -223,6 +236,38 @@ int application::join()
 
     trace_app_join_ret(_return_code);
     return _return_code;
+}
+
+void application::start_and_join(waiter* setup_waiter)
+{
+    // We start the new application code in the current thread. We temporarily
+    // change the app_runtime pointer of this thread, while keeping the old
+    // pointer saved and restoring it when the new application ends (keeping
+    // the shared pointer also keeps the calling application alive).
+    auto original_app = sched::thread::current()->app_runtime();
+    sched::thread::current()->set_app_runtime(runtime());
+    auto original_name = sched::thread::current()->name();
+    if (setup_waiter) {
+        setup_waiter->wake();
+    }
+    _thread = pthread_self(); // may be null if the caller is not a pthread.
+    main();
+    // FIXME: run_tsd_dtors() is a hack - If the new program registered a
+    // destructor via pthread_key_create() and this thread keeps living with
+    // data for this key, the destructor function, part of the new program,
+    // may be called after the program is unloaded - and crash. Let's run
+    // the destructors now. This is wrong if the calling program has its own
+    // thread-local data. It is fine if the thread was created specially for
+    // running start_and_join (or run_and_join() or osv::run()).
+    pthread_private::run_tsd_dtors();
+    sched::thread::current()->set_name(original_name);
+    sched::thread::current()->set_app_runtime(original_app);
+    original_app.reset();
+    _joiner = sched::thread::current();
+    _runtime.reset();
+    sched::thread::wait_until([&] { return _terminated.load(); });
+    _termination_request_callbacks.clear();
+    _lib.reset();
 }
 
 TRACEPOINT(trace_app_main, "app=%p, cmd=%s", application*, const char*);
@@ -454,6 +499,14 @@ void application::merge_in_environ(bool new_program,
     for (auto &iter: *env) {
         set_environ(iter.first, iter.second, new_program);
     }
+}
+
+void with_all_app_threads(std::function<void(sched::thread &)> f, sched::thread& th1) {
+    sched::with_all_threads([&](sched::thread &th2) {
+        if (th2.app_runtime() == th1.app_runtime()) {
+            f(th2);
+        }
+    });
 }
 
 namespace this_application {

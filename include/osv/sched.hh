@@ -464,6 +464,26 @@ public:
      * thread (it cannot operate on an arbitrary thread).
      */
     static void pin(cpu *target_cpu);
+    /**
+     * Pin the given thread to the target CPU.
+     *
+     * This will migrate the given thread to the target CPU. After this
+     * function returns, the thread is guaranteed to only run on the target
+     * CPU.
+     *
+     * A thread cannot be migrated while holding a migrate_disable() lock,
+     * so pin() waits until it is released. However, re-pinning an already
+     * pinned thread (which is not additionally holding a migrate_disable())
+     * is allowed.
+     *
+     * Currently, calling this function on a dead or dying thread may cause
+     * a crash.
+     *
+     * For historic reasons (the previous existance of the pin(cpu*) static
+     * method), this is a static function taking the thread as a parameter.
+     */
+    static void pin(thread *t, cpu *target_cpu);
+
 #ifdef __OSV_CORE__
     static inline thread* current() { return s_current; };
 #else
@@ -485,6 +505,7 @@ public:
     }
     static osv::application *current_app();
     bool migratable() const { return _migration_lock_counter == 0; }
+    bool pinned() const { return _pinned; }
     /**
      * Return thread's numeric id
      *
@@ -630,6 +651,13 @@ private:
     std::unique_ptr<detached_state> _detached_state;
     attr _attr;
     int _migration_lock_counter;
+    // _migration_lock_counter being set may be temporary, but if _pinned
+    // is true, it was permanently incremented by 1 by sched::thread::pin().
+    // In the future, we should replace this boolean _pinned by a bitmask
+    // of allowed cpus for this thread (for full support of
+    // sched_setaffinity()), and the load balancer should consult this bitmask
+    // to decide to which cpus a thread may migrate.
+    bool _pinned;
     arch_thread _arch;
     unsigned int _id;
     std::atomic<bool> _interrupted;

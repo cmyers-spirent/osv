@@ -25,6 +25,8 @@
 extern "C" void __libc_start_main(int(*)(int, char**), int, char**, void(*)(),
     void(*)(), void(*)(), void*);
 
+class waiter;
+
 namespace osv {
 
 class application;
@@ -114,6 +116,27 @@ public:
     int join();
 
     /**
+     * Start a new application and wait for it to terminate.
+     *
+     * run_and_join() is like run() followed by join(), with one important
+     * difference: because run() returns control to the caller, it needs
+     * to run the program in a new thread. But run_and_join() waits for
+     * the program to finish, so it can run it in the current thread,
+     * without creating a new one.
+     *
+     * \param command command to execute
+     * \param args Parameters which will be passed to program's main().
+     * \param new_program true if a new elf namespace must be started
+     * \param env pointer to an unordered_map than will be merged in current env
+     * \throw launch_error
+     */
+    static shared_app_t run_and_join(const std::string& command,
+            const std::vector<std::string>& args,
+            bool new_program = false,
+            const std::unordered_map<std::string, std::string> *env = nullptr,
+            waiter* setup_waiter = nullptr);
+
+    /**
      * Installs a termination callback which will be called when
      * termination is requested or immediately if termination was
      * already requested.
@@ -168,6 +191,7 @@ private:
         return shared_from_this();
     }
     void start();
+    void start_and_join(waiter* setup_waiter);
     void main();
     void run_main(std::string path, int argc, char** argv);
     void run_main();
@@ -199,6 +223,11 @@ private:
     std::atomic<bool> _terminated;
     friend struct application_runtime;
 };
+
+/*
+Execute f on all threads which belong to same app as t1 does.
+*/
+void with_all_app_threads(std::function<void(sched::thread &)> f, sched::thread& th1);
 
 }
 

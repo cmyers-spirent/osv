@@ -6,10 +6,12 @@
  */
 
 #include "arch.hh"
+#include "arch-cpu.hh"
 #include "arch-setup.hh"
 #include <osv/mempool.hh>
 #include <osv/mmu.hh>
 #include "processor.hh"
+#include "processor-flags.h"
 #include "msr.hh"
 #include "xen.hh"
 #include <osv/elf.hh>
@@ -211,6 +213,29 @@ static inline void disable_pic()
 {
     // PIC not present in Xen
     XENPV_ALTERNATIVE({ processor::outb(0xff, 0x21); processor::outb(0xff, 0xa1); }, {});
+}
+
+extern "C" void syscall_entry(void);
+
+// SYSCALL Enable
+static const int IA32_EFER_SCE = 0x1 << 0;
+// Selector shift
+static const int CS_SELECTOR_SHIFT = 3;
+// syscall shift
+static const int IA_32_STAR_SYSCALL_SHIFT = 32;
+
+namespace processor {
+void init_syscall() {
+    unsigned long cs = gdt_cs;
+    processor::wrmsr(msr::IA32_STAR,  (cs << CS_SELECTOR_SHIFT) << IA_32_STAR_SYSCALL_SHIFT);
+    // lstar is where syscall set rip so we set it to syscall_entry
+    processor::wrmsr(msr::IA32_LSTAR, reinterpret_cast<uint64_t>(syscall_entry));
+    // syscall does rflag = rflag and not fmask
+    // we want no minimize the impact of the syscall instruction so we choose
+    // fmask as zero
+    processor::wrmsr(msr::IA32_FMASK, 0);
+    processor::wrmsr(msr::IA32_EFER,  processor::rdmsr(msr::IA32_EFER) | IA32_EFER_SCE);
+}
 }
 
 void arch_init_premain()
