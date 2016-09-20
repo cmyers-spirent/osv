@@ -1099,13 +1099,9 @@ struct l1 {
     }
     static void* alloc_page_local();
     static bool free_page_local(void* v);
-    void* pop() {
-        void *page = nullptr;
-        return (_pages.pop(page) ? page : nullptr);
-    }
-    bool push(void *page) { return _pages.push(page); }
-    unsigned size() { return _pages.size(); }
-    bool empty() { return _pages.empty(); }
+    void* pop() { return _pages[--nr]; }
+    void push(void* page) { _pages[nr++] = page; }
+    void* top() { return _pages[nr - 1]; }
     void wake_thread() { _fill_thread.wake(); }
     static void fill_thread();
     static void refill();
@@ -1114,12 +1110,11 @@ struct l1 {
     static constexpr size_t max = 512;
     static constexpr size_t watermark_lo = max * 1 / 4;
     static constexpr size_t watermark_hi = max * 3 / 4;
+    size_t nr = 0;
 
 private:
     sched::thread _fill_thread;
-
-    typedef ring_spsc<void *, max> page_ring;
-    page_ring _pages;
+    void* _pages[max];
 };
 
 struct page_batch {
@@ -1161,7 +1156,7 @@ public:
         page_batch* pb;
         while (!(pb = try_alloc_page_batch()) &&
                 // Check again since someone else might change pbuf.nr when we sleep
-                (pbuf.size() + page_batch::nr_pages < pbuf.max / 2)) {
+                (pbuf.nr + page_batch::nr_pages < pbuf.max / 2)) {
             WITH_LOCK(migration_lock) {
                 DROP_LOCK(preempt_lock) {
                     refill();
@@ -1248,19 +1243,14 @@ void l1::fill_thread()
     for (;;) {
         sched::thread::wait_until([&] {
                 WITH_LOCK(preempt_lock) {
-                    auto nr = pbuf.size();
-                    return nr < pbuf.watermark_lo || nr > pbuf.watermark_hi;
+                    return pbuf.nr < pbuf.watermark_lo || pbuf.nr > pbuf.watermark_hi;
                 }
         });
-        if (pbuf.size() < pbuf.watermark_lo) {
-            while (pbuf.size() < pbuf.max / 2) {
-                refill();
-            }
+        if (pbuf.nr < pbuf.watermark_lo) {
+            refill();
         }
-        if (pbuf.size() > pbuf.watermark_hi) {
-            while (pbuf.size() > pbuf.max / 2) {
-                unfill();
-            }
+        if (pbuf.nr > pbuf.watermark_hi) {
+            unfill();
         }
     }
 }
@@ -1269,17 +1259,12 @@ void l1::refill()
 {
     SCOPE_LOCK(preempt_lock);
     auto& pbuf = get_l1();
-    auto* pb = global_l2.alloc_page_batch(pbuf);
-    if (pb) {
-        // Another thread might have filled the ring while we waited for
-        // the page batch.  Make sure there is enough room to add the pages
-        // we just acquired, otherwise return them.
-        if (pbuf.size() + page_batch::nr_pages <= pbuf.max) {
+    while (pbuf.nr + page_batch::nr_pages < pbuf.max / 2) {
+        auto* pb = global_l2.alloc_page_batch(pbuf);
+        if (pb) {
             for (auto& page : pb->pages) {
-                assert(pbuf.push(page));
+                pbuf.push(page);
             }
-        } else {
-            global_l2.free_page_batch(pb);
         }
     }
 }
@@ -1288,12 +1273,10 @@ void l1::unfill()
 {
     SCOPE_LOCK(preempt_lock);
     auto& pbuf = get_l1();
-    // Don't bother unfilling unless we are actually above our target size.
-    if (pbuf.size() > pbuf.max / 2) {
-        auto* pb = static_cast<page_batch*>(pbuf.pop());
-        pb->pages[0] = pb;
-        for (size_t i = 1 ; i < page_batch::nr_pages; i++) {
-            assert(pb->pages[i] = pbuf.pop());
+    while (pbuf.nr > page_batch::nr_pages + pbuf.max / 2) {
+        auto* pb = static_cast<page_batch*>(pbuf.top());
+        for (size_t i = 0 ; i < page_batch::nr_pages; i++) {
+            pb->pages[i] = pbuf.pop();
         }
         global_l2.free_page_batch(pb);
     }
@@ -1303,8 +1286,11 @@ void* l1::alloc_page_local()
 {
     SCOPE_LOCK(preempt_lock);
     auto& pbuf = get_l1();
-    if (pbuf.size() < pbuf.watermark_lo) {
+    if (pbuf.nr < pbuf.watermark_lo) {
         pbuf.wake_thread();
+    }
+    if (pbuf.nr == 0) {
+        return nullptr;
     }
     return pbuf.pop();
 }
@@ -1313,10 +1299,14 @@ bool l1::free_page_local(void* v)
 {
     SCOPE_LOCK(preempt_lock);
     auto& pbuf = get_l1();
-    if (pbuf.size() > pbuf.watermark_hi) {
+    if (pbuf.nr > pbuf.watermark_hi) {
         pbuf.wake_thread();
     }
-    return pbuf.push(v);
+    if (pbuf.nr == pbuf.max) {
+        return false;
+    }
+    pbuf.push(v);
+    return true;
 }
 
 // Global thread for L2 page pool
