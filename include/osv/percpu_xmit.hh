@@ -398,6 +398,7 @@ private:
                     tmr.set(10_ms);
                     sched::thread::wait_until([this, &tmr] {
                             return has_pending() || tmr.expired(); });
+                    tmr.cancel();
 lock:
                     lock_running();
                     if (smp) {
