@@ -349,6 +349,8 @@ private:
         int budget = qsize;
         auto start = osv::clock::uptime::now();
         const bool smp = (sched::cpus.size() > 1);
+        sched::timer tmr(*sched::thread::current());
+        using namespace osv::clock::literals;
 
         //
         // Dispatcher holds the RUNNING lock all the time it doesn't sleep
@@ -391,7 +393,11 @@ private:
                     // We are going to sleep - release the HW channel
                     unlock_running();
 
-                    sched::thread::wait_until([this] { return has_pending(); });
+                    // FIXME: the workers appear to be missing wakeups, so set
+                    // a timer so we will always wake up eventually.
+                    tmr.set(10_ms);
+                    sched::thread::wait_until([this, &tmr] {
+                            return has_pending() || tmr.expired(); });
 lock:
                     lock_running();
                     if (smp) {
