@@ -324,7 +324,7 @@ private:
 
         txq(net* parent, vring* vq) :
             vqueue(vq), _parent(parent), _xmit_it(this),
-            _kick_thresh(vqueue->size()),
+            _kick_thresh(vqueue->size() / 2),
             _xmitter(this,
                      // TODO: implement a proper StopPred when we fix a SP code
                      [] { return false; },
@@ -487,4 +487,3 @@ private:
 }
 
 #endif
-
