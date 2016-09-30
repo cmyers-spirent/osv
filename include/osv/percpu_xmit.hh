@@ -491,7 +491,7 @@ lock:
             // pop()s our wait_record since it's allocated on our stack.
             //
             success = local_cpuq->push(new_buff_desc);
-            if (success && !test_and_set_pending()) {
+            if (!success || !test_and_set_pending()) {
                 wake_worker();
             }
 
@@ -538,7 +538,7 @@ lock:
 
     // RUNNING state controling functions
     bool try_lock_running() {
-        return !_running.test_and_set(std::memory_order_acquire);
+        return _running.try_lock();
     }
 
     void lock_running() {
@@ -546,12 +546,10 @@ lock:
         // Check if there is no fast-transmit hook running already.
         // If yes - sleep until it ends.
         //
-        if (!try_lock_running()) {
-            sched::thread::wait_until([this] { return try_lock_running(); });
-        }
+        _running.lock();
     }
     void unlock_running() {
-        _running.clear(std::memory_order_release);
+        _running.unlock();
     }
 
     // PENDING (packets) controling functions
@@ -584,8 +582,7 @@ private:
     // This lock will be used to get an exclusive control over the HW
     // channel.
     //
-    std::atomic_flag                              _running    CACHELINE_ALIGNED
-                                                           = ATOMIC_FLAG_INIT;
+    mutex _running;
 };
 
 /**
