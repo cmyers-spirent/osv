@@ -454,7 +454,8 @@ private:
         //
         // Currently this gives us ~16 pages per one CPU ring.
         //
-        osv::xmitter<txq, 4096,
+        // Cutting down to 512 doesn't seem to hurt performance.
+        osv::xmitter<txq, 512,
                      std::function<bool ()>,
                      osv::tx_xmit_iterator<txq>> _xmitter;
 
