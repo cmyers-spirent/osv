@@ -146,7 +146,9 @@ void pool::collect_garbage()
         auto sink = pcpu_free_list[cpu_id][i];
         free_object* obj;
         while ((obj = sink->pop())) {
+            assert(cpu_id == mempool_cpuid());
             memory::pool::from_object(obj)->free_same_cpu(obj, cpu_id);
+            assert(cpu_id == mempool_cpuid());
         }
     }
 }
@@ -198,6 +200,12 @@ pool::~pool()
 const size_t pool::max_object_size = page_size / 4;
 const size_t pool::min_object_size = sizeof(free_object);
 
+// Verify that pointer is aligned with size
+static bool is_valid_object_ptr(free_object *object, u64 size)
+{
+    return (reinterpret_cast<std::uintptr_t>(object) & (size - 1)) == 0;
+}
+
 pool::page_header* pool::to_header(free_object* object)
 {
     return reinterpret_cast<page_header*>(
@@ -232,6 +240,7 @@ void* pool::alloc()
         if (!header->local_free) {
             _free->erase(it);
         }
+        assert(is_valid_object_ptr(obj, _size));
         ret = obj;
     }
 
@@ -282,6 +291,8 @@ void pool::free_same_cpu(free_object* obj, unsigned cpu_id)
 {
     void* object = static_cast<void*>(obj);
     trace_pool_free_same_cpu(this, object);
+    assert(cpu_id == mempool_cpuid());
+    assert(is_valid_object_ptr(obj, _size));
 
     page_header* header = to_header(obj);
     if (!--header->nalloc && have_full_pages()) {
@@ -308,6 +319,7 @@ void pool::free_same_cpu(free_object* obj, unsigned cpu_id)
 
 void pool::free_different_cpu(free_object* obj, unsigned obj_cpu, unsigned cur_cpu)
 {
+    assert(is_valid_object_ptr(obj, _size));
     trace_pool_free_different_cpu(this, obj, obj_cpu);
     auto sink = memory::pcpu_free_list[obj_cpu][cur_cpu];
     sink->free(obj_cpu, obj);
@@ -320,6 +332,7 @@ void pool::free(void* object)
     WITH_LOCK(preempt_lock) {
 
         free_object* obj = static_cast<free_object*>(object);
+        assert(is_valid_object_ptr(obj, _size));
         page_header* header = to_header(obj);
         unsigned obj_cpu = header->cpu_id;
         unsigned cur_cpu = mempool_cpuid();
