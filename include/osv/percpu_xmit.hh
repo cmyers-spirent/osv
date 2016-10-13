@@ -214,7 +214,7 @@ public:
             _all_cpuqs.push_back(_cpuq.for_cpu(c)->get());
 
             _worker.for_cpu(c)->me =
-                sched::thread::make([this] { poll_until(); },
+                new sched::thread([this] { poll_until(); },
                                sched::thread::attr().pin(c).
                                name(worker_name_base + std::to_string(c->id)));
             _worker.for_cpu(c)->me->
@@ -349,8 +349,6 @@ private:
         int budget = qsize;
         auto start = osv::clock::uptime::now();
         const bool smp = (sched::cpus.size() > 1);
-        sched::timer tmr(*sched::thread::current());
-        using namespace osv::clock::literals;
 
         //
         // Dispatcher holds the RUNNING lock all the time it doesn't sleep
@@ -393,10 +391,7 @@ private:
                     // We are going to sleep - release the HW channel
                     unlock_running();
 
-                    tmr.set(10_ms);
-                    sched::thread::wait_until([this, &tmr] {
-                            return has_pending() || tmr.expired(); });
-                    tmr.cancel();
+                    sched::thread::wait_until([this] { return has_pending(); });
 lock:
                     lock_running();
                     if (smp) {
@@ -496,7 +491,7 @@ lock:
             // pop()s our wait_record since it's allocated on our stack.
             //
             success = local_cpuq->push(new_buff_desc);
-            if (!success || !test_and_set_pending()) {
+            if (success && !test_and_set_pending()) {
                 wake_worker();
             }
 
@@ -543,7 +538,7 @@ lock:
 
     // RUNNING state controling functions
     bool try_lock_running() {
-        return _running.try_lock();
+        return !_running.test_and_set(std::memory_order_acquire);
     }
 
     void lock_running() {
@@ -551,10 +546,12 @@ lock:
         // Check if there is no fast-transmit hook running already.
         // If yes - sleep until it ends.
         //
-        _running.lock();
+        if (!try_lock_running()) {
+            sched::thread::wait_until([this] { return try_lock_running(); });
+        }
     }
     void unlock_running() {
-        _running.unlock();
+        _running.clear(std::memory_order_release);
     }
 
     // PENDING (packets) controling functions
@@ -587,7 +584,8 @@ private:
     // This lock will be used to get an exclusive control over the HW
     // channel.
     //
-    mutex _running;
+    std::atomic_flag                              _running    CACHELINE_ALIGNED
+                                                           = ATOMIC_FLAG_INIT;
 };
 
 /**

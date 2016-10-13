@@ -271,8 +271,8 @@ static void aio_init()
     for (size_t i = 0; i < sched::cpus.size(); i++) {
         std::string name("aio");
         name += std::to_string(i);
-        auto t = sched::thread::make([] { process_aio_queue(&aio_worker_queue); },
-                                     sched::thread::attr().name(name));
+        auto t = new sched::thread([] { process_aio_queue(&aio_worker_queue); },
+                                   sched::thread::attr().name(name));
         t->start();
     }
 

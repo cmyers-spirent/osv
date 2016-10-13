@@ -302,10 +302,10 @@ private:
     /* Single Rx queue object */
     struct rxq {
         rxq(vring* vq, std::function<void ()> poll_func)
-            : vqueue(vq), poll_task(sched::thread::make(poll_func, sched::thread::attr().
-                                    name("virtio-net-rx"))) {};
+            : vqueue(vq), poll_task(poll_func, sched::thread::attr().
+                                    name("virtio-net-rx")) {};
         vring* vqueue;
-        std::unique_ptr<sched::thread> poll_task;
+        sched::thread  poll_task;
         struct rxq_stats stats = { 0 };
 
         void update_wakeup_stats(const u64 wakeup_packets) {
@@ -324,7 +324,7 @@ private:
 
         txq(net* parent, vring* vq) :
             vqueue(vq), _parent(parent), _xmit_it(this),
-            _kick_thresh(vqueue->size() / 2),
+            _kick_thresh(vqueue->size()),
             _xmitter(this,
                      // TODO: implement a proper StopPred when we fix a SP code
                      [] { return false; },
@@ -454,8 +454,7 @@ private:
         //
         // Currently this gives us ~16 pages per one CPU ring.
         //
-        // Cutting down to 512 doesn't seem to hurt performance.
-        osv::xmitter<txq, 512,
+        osv::xmitter<txq, 4096,
                      std::function<bool ()>,
                      osv::tx_xmit_iterator<txq>> _xmitter;
 
@@ -488,3 +487,4 @@ private:
 }
 
 #endif
+

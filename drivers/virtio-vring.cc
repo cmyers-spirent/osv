@@ -46,8 +46,8 @@ namespace virtio {
         unsigned sz = VIRTIO_ALIGN(vring::get_size(num, VIRTIO_PCI_VRING_ALIGN));
         _vring_ptr = memory::alloc_phys_contiguous_aligned(sz, 4096);
         memset(_vring_ptr, 0, sz);
-
-        // Set up pointers
+        
+        // Set up pointers        
         assert(is_power_of_two(num));
         _num = num;
         _desc = (vring_desc*)_vring_ptr;
@@ -309,7 +309,7 @@ namespace virtio {
         // the call to kick() itself is not issued for every separate buffer
         // and _avail_added_since_kick might wrap around due to this bulking.
         //
-        if (kicked || (_avail_added_since_kick >= (u16)(~0) / 4)) {
+        if (kicked || (_avail_added_since_kick >= (u16)(~0) / 2)) {
             _dev->kick(_q_index);
             _avail_added_since_kick = 0;
             return true;

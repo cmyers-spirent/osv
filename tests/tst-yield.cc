@@ -17,7 +17,7 @@ int main(int argc, char **argv)
     constexpr int J = 10000000;
     sched::thread *ts[N];
     for (auto &t : ts) {
-            t = sched::thread::make([] {
+            t = new sched::thread([] {
                 for (int j = 0; j < J; j++) {
                     sched::thread::yield();
                 }

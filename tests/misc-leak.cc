@@ -52,11 +52,11 @@ int main(int argc, char **argv)
 
     debug("testing leaks in threads\n");
     for(int i=0; i<100; i++){
-        sched::thread *t = sched::thread::make([] {});
+        sched::thread *t = new sched::thread([] {});
         delete t;
     }
     for(int i=0; i<100; i++){
-        sched::thread *t = sched::thread::make([] {});
+        sched::thread *t = new sched::thread([] {});
         t->start();
         t->join();
         delete t;

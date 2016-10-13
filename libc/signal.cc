@@ -344,7 +344,7 @@ int kill(pid_t pid, int sig)
         // care which of its threads handle the signal - why not just create
         // a completely new thread and run it there...
         const auto sa = signal_actions[sig];
-        auto t = sched::thread::make([=] {
+        auto t = new sched::thread([=] {
             if (sa.sa_flags & SA_RESETHAND) {
                 signal_actions[sig].sa_flags = 0;
                 signal_actions[sig].sa_handler = SIG_DFL;
@@ -419,7 +419,7 @@ static itimer itimer_real(SIGALRM, "itimer-real");
 static itimer itimer_virt(SIGVTALRM, "itimer-virt");
 
 itimer::itimer(int signum, const char *name)
-    : _alarm_thread(sched::thread::make([&] { work(); },
+    : _alarm_thread(new sched::thread([&] { work(); },
                     sched::thread::attr().name(name)))
     , _signum(signum)
 {
