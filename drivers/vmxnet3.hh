@@ -210,7 +210,7 @@ private:
     struct mbuf *_buf[VMXNET3_MAX_TX_NDESC] = {};
     unsigned _avail = VMXNET3_MAX_TX_NDESC;
     osv::tx_xmit_iterator<vmxnet3_txqueue> _xmit_it;
-    osv::xmitter<vmxnet3_txqueue, 4096, std::function<bool ()>,
+    osv::xmitter<vmxnet3_txqueue, 512, std::function<bool ()>,
                  osv::tx_xmit_iterator<vmxnet3_txqueue>> _xmitter;
     struct ifnet* _ifn;
     pci::bar *_bar0;

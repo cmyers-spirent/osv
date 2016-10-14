@@ -447,14 +447,8 @@ private:
         osv::tx_xmit_iterator<txq> _xmit_it;
         const int _kick_thresh;
         u16 _pkts_to_kick = 0;
-        //
-        // 4096 is the size of the buffers ring of the FreeBSD virtio-net
-        // driver. So, we are using this as a baseline. We may ajust this value
-        // later (cut it down maybe?!).
-        //
-        // Currently this gives us ~16 pages per one CPU ring.
-        //
-        osv::xmitter<txq, 4096,
+
+        osv::xmitter<txq, 512,
                      std::function<bool ()>,
                      osv::tx_xmit_iterator<txq>> _xmitter;
 
@@ -487,4 +481,3 @@ private:
 }
 
 #endif
-
