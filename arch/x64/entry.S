@@ -217,7 +217,6 @@ syscall_entry:
     # From http://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-on-x86-64:
     # "User-level applications use as integer registers for passing the sequence %rdi, %rsi, %rdx, %rcx, %r8 and %r9. The kernel interface uses %rdi, %rsi, %rdx, %r10, %r8 and %r9"
 
-    # FIXME: fpu
     pushq_cfi %rbx
     pushq_cfi %rdx
     pushq_cfi %rsi
@@ -250,6 +249,7 @@ syscall_entry:
     # Because we pushed an even number of 8 bytes after aligning the stack,
     # it is still 16-byte aligned and we don't need to adjust it here.
 
+    # FPU save/restore is done inside the wrapper
     callq syscall_wrapper
 
     popq_cfi %r9
@@ -276,7 +276,15 @@ syscall_entry:
     popq_cfi %rcx
 
     movq 8(%rsp), %rsp # undo alignment (as explained above)
-    addq $128, %rsp    # undo red-zone skip
+
+    # restore rflags
+    # push the rflag state syscall saved in r11 to the stack
+    pushq %r11
+    # pop the stack value in flag register
+    popfq
+
+    #undo red-zone skip without altering restored flags
+    lea 128(%rsp), %rsp
 
     # jump to rcx where the syscall instruction put rip
     # (sysret would leave rxc cloberred so we have nothing to do to restore it)

@@ -936,6 +936,7 @@ objects += core/net_trace.o
 objects += core/app.o
 objects += core/libaio.o
 objects += core/osv_execve.o
+objects += core/osv_c_wrappers.o
 
 #include $(src)/libc/build.mk:
 libc =
@@ -1360,7 +1361,7 @@ musl += network/getservbyname_r.o
 musl += network/getservbyname.o
 musl += network/getservbyport_r.o
 musl += network/getservbyport.o
-musl += network/getifaddrs.o
+libc += network/getifaddrs.o
 libc += network/if_nameindex.o
 musl += network/if_freenameindex.o
 

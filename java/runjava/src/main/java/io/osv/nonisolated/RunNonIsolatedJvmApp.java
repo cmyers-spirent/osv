@@ -8,26 +8,33 @@ package io.osv.nonisolated;
  */
 
 import io.osv.Jvm;
+import io.osv.util.ClassDiagnostics;
 
 import static io.osv.RunJvmAppHelper.runSync;
 import static io.osv.RunJvmAppHelper.JvmFactory;
 
 public class RunNonIsolatedJvmApp {
-	private static native void onVMStop();
+    private static native void onVMStop();
 
-	static {
-		Runtime.getRuntime().addShutdownHook(new Thread() {
-			public void run() {
-				onVMStop();
-			}
-		});
-	}
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            public void run() {
+                onVMStop();
+            }
+        });
+    }
 
     public static void main(String[] args) {
+        if(ClassDiagnostics.showDiagnostics(args)) {
+            System.out.println("------ Run Java class information --------");
+            System.out.println("Classloader: " + ClassDiagnostics.showClassLoaderHierarchy(RunNonIsolatedJvmApp.class,false));
+            System.out.println("Security: " + ClassDiagnostics.showClassSecurity(RunNonIsolatedJvmApp.class));
+        }
+
         runSync(new JvmFactory() {
             public Jvm getJvm() {
                 return NonIsolatedJvm.getInstance();
             }
-        },args);
+        }, args);
     }
 }

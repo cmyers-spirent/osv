@@ -16,6 +16,22 @@
 #include <osv/firmware.hh>
 #include <osv/hypervisor.hh>
 
+// we cannot include osv/dhcp.hh, hence direct declaration.
+extern "C" void dhcp_restart(bool wait);
+
+// Set the hostname to given string.
+// If hostname changes, try to propagate the change to DHCP server too.
+void set_hostname_restart_dhcp(std::string hostname) {
+    if (hostname.length() > 0) {
+        char old_hostname[256] = "";
+        gethostname(old_hostname, sizeof(old_hostname));
+        sethostname(hostname.c_str(), hostname.length());
+        if (hostname != old_hostname) {
+            dhcp_restart(true);
+        }
+    }
+}
+
 namespace init {
 using namespace std;
 
@@ -168,6 +184,70 @@ void script_module::wait()
     }
 }
 
+/*
+Mount NFS mountpoint specified via cloud-init.
+
+Cloud-init config snippet:
+mounts:
+ - [ nfs://192.168.122.1/ggg, /ggg, auto, uid=0 ]
+
+This results in running command
+/tools/mount-nfs.so nfs://192.168.122.1/ggg/?uid=0 /ggg
+*/
+void mount_module::yaml_to_request(const YAML::Node& node, http::server::request& req)
+{
+    std::string method = "PUT";
+    std::string nfs_server = node[0].as<string>();
+    std::string mount_point = node[1].as<string>();
+    // node[2] is "auto" flag - we ignore it
+    std::string options = "";
+    if (node.size() >= 4) {
+        options = node[3].as<string>();
+    }
+
+    http::server::header param;
+    param.name = "command";
+    param.value = "/tools/mount-nfs.so";
+    param.value += " " + nfs_server;
+    if (options.size() > 0) {
+        param.value += "/?" + options;
+    }
+    param.value += " " + mount_point;
+    req.query_parameters.push_back(param);
+    //fprintf(stderr, "MNT: param name='%s' value='%s'", param.name.c_str(), param.value.c_str());
+    req.method = method;
+    req.uri = "/app";
+}
+
+void mount_module::do_api(http::server::request& req)
+{
+    http::server::reply rep;
+
+    httpserver::global_server::get_routes().handle(req.uri, req, rep);
+
+    if (rep.status != 200) {
+        throw osvinit_exception(rep.content);
+    }
+}
+
+void mount_module::handle(const YAML::Node& doc)
+{
+    for (auto& node : doc) {
+        http::server::request req;
+        yaml_to_request(node, req);
+        if (!req.uri.empty()) {
+            do_api(req);
+        }
+    }
+}
+
+void hostname_module::handle(const YAML::Node& doc)
+{
+    auto hostname = doc.as<string>();
+    debug("cloudinit hostname: %s\n", hostname.c_str());
+    set_hostname_restart_dhcp(hostname);
+}
+
 void osvinit::add_module(std::shared_ptr<config_module> module)
 {
     _modules[module->get_label()] = module;
@@ -202,11 +282,8 @@ void osvinit::load_from_cloud(bool ignore_missing_source)
     try {
         auto& ds = get_data_source();
 
-        std::string hostname = ds.external_hostname();
-        if (hostname.length() > 0) {
-            // Set the hostname from given data source, if it exists.
-            sethostname(hostname.c_str(), hostname.length());
-        }
+        // Set the hostname from given data source, if it exists.
+        set_hostname_restart_dhcp(ds.external_hostname());
 
         // Load user data.
         user_data = ds.get_user_data();
