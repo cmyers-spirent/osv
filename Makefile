@@ -1658,6 +1658,8 @@ libc += unistd/getpgrp.o
 libc += unistd/getppid.o
 libc += unistd/getsid.o
 libc += unistd/setsid.o
+libc += unistd/ttyname_r.o
+libc += unistd/ttyname.o
 
 musl += regex/fnmatch.o
 musl += regex/glob.o

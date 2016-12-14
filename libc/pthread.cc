@@ -28,7 +28,6 @@
 #include <osv/lazy_indirect.hh>
 
 #include <api/time.h>
-#include <osv/spinlock.h>
 #include <osv/rwlock.h>
 
 #include "pthread.hh"
@@ -196,38 +195,46 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     sigset_t sigset;
     sigprocmask(SIG_SETMASK, nullptr, &sigset);
 
+    thread_attr tmp;
+    cpu_set_t tmp_cpuset;
     if (attr != nullptr) {
-        thread_attr tmp(*from_libc(attr));
-        if (tmp.cpuset != nullptr) {
-            // We have a CPU set. If we have only one bit set in the set, we
-            // pin it to the corresponding CPU. If the set exists, but has no
-            // CPUs set, we do nothing. Otherwise, warn the user, and do
-            // nothing.
-            int count = CPU_COUNT(tmp.cpuset);
-            if (count == 0) {
-                // Having a cpuset with no CPUs in it is invalid.
-                return EINVAL;
-            } else if (count == 1) {
-                for (size_t i = 0; i < __CPU_SETSIZE; i++) {
-                    if (CPU_ISSET(i, tmp.cpuset)) {
-                        if (i < sched::cpus.size()) {
-                            tmp.cpu = sched::cpus[i];
-                            break;
-                        } else {
-                            return EINVAL;
-                        }
-                    }
-                }
-            } else {
-                printf("Warning: OSv only supports cpu_set_t with at most one "
-                       "CPU set.\n The cpu_set_t provided will be ignored.\n");
-            }
-        }
-        t = new pthread(start_routine, arg, sigset, &tmp);
-    } else {
-        t = new pthread(start_routine, arg, sigset, from_libc(attr));
+        tmp = *from_libc(attr);
     }
 
+    if (tmp.cpuset == nullptr) {
+        // Parent thread CPU pinning should be inherited if CPU pinning
+        // was not explicitly set from input attr.
+        tmp.cpuset = &tmp_cpuset;
+        sched_getaffinity(0, sizeof(*tmp.cpuset), tmp.cpuset);
+    }
+
+    // We have a CPU set. If we have only one bit set in the set, we
+    // pin it to the corresponding CPU. If the set exists, but has no
+    // CPUs set, we do nothing. Otherwise, warn the user, and do
+    // nothing.
+    int count = CPU_COUNT(tmp.cpuset);
+    if (count == 0) {
+        // Having a cpuset with no CPUs in it is invalid.
+        return EINVAL;
+    } else if (count == 1) {
+        for (size_t i = 0; i < __CPU_SETSIZE; i++) {
+            if (CPU_ISSET(i, tmp.cpuset)) {
+                if (i < sched::cpus.size()) {
+                    tmp.cpu = sched::cpus[i];
+                    break;
+                } else {
+                    return EINVAL;
+                }
+            }
+        }
+    } else if (count == (int)sched::cpus.size()) {
+        // start unpinned
+    } else {
+        printf("Warning: OSv only supports cpu_set_t with at most one "
+               "CPU set.\n The cpu_set_t provided will be ignored.\n");
+    }
+
+    t = new pthread(start_routine, arg, sigset, &tmp);
     *thread = t->to_libc();
     t->start();
     return 0;
@@ -316,16 +323,24 @@ int pthread_getcpuclockid(pthread_t thread, clockid_t *clock_id)
     return 0;
 }
 
-// pthread_spinlock_t and spinlock_t aren't really the same type. But since
-// spinlock_t is a boolean and pthread_spinlock_t is defined to be an integer,
-// just casting it like this is fine. As long as we are never operating more
-// than sizeof(int) at a time, we should be fine.
+// Note that for pthread_spin_lock() we cannot use the implementation
+// from <osv/spinlock.h> because it disables preemption, which is
+// inappropriate for application code, and also unnecessary (the kernel
+// version needs to defend against a deadlock when one of the lock holders
+// disables preemption - but an application cannot disable preemption).
+// So we repeat similar code here.
+inline bool* from_libc(pthread_spinlock_t* a) {
+    static_assert(sizeof(bool) <= sizeof(pthread_spinlock_t),
+                  "pthread_spinlock_t cannot hold a bool");
+    return reinterpret_cast<bool*>(a);
+}
+
 int pthread_spin_init(pthread_spinlock_t *lock, int pshared)
 {
-    static_assert(sizeof(spinlock_t) <= sizeof(pthread_spinlock_t),
-                  "OSv spinlock type doesn't match pthread's");
-    // PTHREAD_PROCESS_SHARED and PTHREAD_PROCESS_PRIVATE are the same while we have a single process.
-    spinlock_init(reinterpret_cast<spinlock_t *>(lock));
+    // PTHREAD_PROCESS_SHARED and PTHREAD_PROCESS_PRIVATE are the same while
+    // we have a single process.
+    bool* b = from_libc(lock);
+    *b = false;
     return 0;
 }
 
@@ -336,13 +351,20 @@ int pthread_spin_destroy(pthread_spinlock_t *lock)
 
 int pthread_spin_lock(pthread_spinlock_t *lock)
 {
-    spin_lock(reinterpret_cast<spinlock_t *>(lock));
+    bool* b = from_libc(lock);
+    while (__sync_lock_test_and_set(b, 1)) {
+        while (*b) {
+            barrier();
+            // FIXME: use "PAUSE" instruction here
+        }
+    }
     return 0; // We can't really do deadlock detection
 }
 
 int pthread_spin_trylock(pthread_spinlock_t *lock)
 {
-    if (!spin_trylock(reinterpret_cast<spinlock_t *>(lock))) {
+    bool* b = from_libc(lock);
+    if (__sync_lock_test_and_set(b, 1)) {
         return EBUSY;
     }
     return 0;
@@ -350,7 +372,8 @@ int pthread_spin_trylock(pthread_spinlock_t *lock)
 
 int pthread_spin_unlock(pthread_spinlock_t *lock)
 {
-    spin_unlock(reinterpret_cast<spinlock_t *>(lock));
+    bool* b = from_libc(lock);
+    __sync_lock_release(b, 0);
     return 0;
 }
 
@@ -407,7 +430,7 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 int pthread_mutex_trylock(pthread_mutex_t *m)
 {
     if (!from_libc(m)->try_lock()) {
-        return -EBUSY;
+        return EBUSY;
     }
     return 0;
 }
