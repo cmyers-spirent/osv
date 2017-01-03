@@ -84,11 +84,11 @@ ifeq (,$(wildcard conf/$(arch).mk))
 endif
 include conf/$(arch).mk
 
-CROSS_PREFIX ?= $(if $(filter-out $(arch), $(host_arch)), $(arch)-linux-gnu-)
+CROSS_PREFIX ?= $(if $(filter-out $(arch),$(host_arch)),$(arch)-linux-gnu-)
 CXX=$(CROSS_PREFIX)g++
 CC=$(CROSS_PREFIX)gcc
 LD=$(CROSS_PREFIX)ld.bfd
-STRIP=$(CROSS_PREFIX)strip
+export STRIP=$(CROSS_PREFIX)strip
 OBJCOPY=$(CROSS_PREFIX)objcopy
 
 # Our makefile puts all compilation results in a single directory, $(out),
@@ -131,17 +131,7 @@ endif
 quiet = $(if $V, $1, @echo " $2"; $1)
 very-quiet = $(if $V, $1, @$1)
 
-# TODO: These java-targets shouldn't be compiled here, but rather in modules/java/Makefile.
-# The problem is that getting the right compilation lines there is hard :-(
-ifeq ($(arch),aarch64)
-java-targets :=
-else
-java-targets := $(out)/java/jvm/java.so $(out)/java/jvm/java_non_isolated.so \
-	$(out)/java/jni/balloon.so $(out)/java/jni/elf-loader.so $(out)/java/jni/networking.so \
-        $(out)/java/jni/stty.so $(out)/java/jni/tracepoint.so $(out)/java/jni/power.so $(out)/java/jni/monitor.so
-endif
-
-all: $(out)/loader.img $(java-targets) links
+all: $(out)/loader.img links
 .PHONY: all
 
 links:
@@ -376,10 +366,6 @@ $(out)/%.o: %.cc | generated-headers
 $(out)/%.o: %.c | generated-headers
 	$(makedir)
 	$(call quiet, $(CC) $(CFLAGS) -c -o $@ $<, CC $*.c)
-
-$(out)/java/jvm/java_non_isolated.o: java/jvm/java.cc | generated-headers
-	$(makedir)
-	$(call quiet, $(CXX) $(CXXFLAGS) -DRUN_JAVA_NON_ISOLATED -o $@ -c java/jvm/java.cc, CXX $<)
 
 $(out)/%.o: %.S
 	$(makedir)
@@ -1496,7 +1482,7 @@ musl += stdio/ungetc.o
 musl += stdio/ungetwc.o
 musl += stdio/vasprintf.o
 libc += stdio/vdprintf.o
-musl += stdio/vfprintf.o
+libc += stdio/vfprintf.o
 libc += stdio/vfscanf.o
 musl += stdio/vfwprintf.o
 libc += stdio/vfwscanf.o
@@ -1672,6 +1658,7 @@ musl += regex/tre-mem.o
 $(out)/musl/src/regex/tre-mem.o: CFLAGS += -UNDEBUG
 
 libc += pthread.o
+libc += pthread_barrier.o
 libc += libc.o
 libc += dlfcn.o
 libc += time.o

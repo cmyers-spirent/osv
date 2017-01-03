@@ -1,10 +1,24 @@
-# TODO: need to move compilation of $(java-targets) from the main makefile
-# to here. Unfortunately, compiling with OSv header files is a big mess,
-# and much easier to do it in the main OSv makefile :-(
 SRC = $(shell readlink -f ../..)
-module:
-	cd $(SRC)/java && mvn package -DskipTests=true
+
+include $(SRC)/modules/java-base/common.gmk
+
+ifeq ($(arch),aarch64)
+java-targets :=
+else
+java-targets := obj/java_non_isolated.so
+endif
+
+obj/java_non_isolated.o: $(SRC)/modules/java-base/java.cc | init
+	$(call quiet, $(CXX) $(CXXFLAGS) -DRUN_JAVA_NON_ISOLATED -o $@ -c $(SRC)/modules/java-base/java.cc -MMD, CXX $@)
+
+init:
+	@echo "  MKDIRS"
+	$(call very-quiet, mkdir -p obj)
+
+module: $(java-targets)
+	cd $(SRC)/modules/java-base && mvn --projects :runjava-common,:runjava-non-isolated package -DskipTests=true
 
 clean:
-	cd $(SRC)/java && mvn clean
+	cd $(SRC)/modules/java-base && mvn clean
 	-rm -f dependency-reduced-pom.xml
+	$(call very-quiet, $(RM) -rf obj)

@@ -968,15 +968,15 @@ int pthread_setname_np(pthread_t p, const char* name)
     return 0;
 }
 
-int pthread_getname_np(pthread_t p, char *name, size_t length)
+int pthread_getname_np(pthread_t p, char *name, size_t namelen)
 {
     if (!p) {
         return EINVAL;
     }
 
     auto s = pthread::from_libc(p)->_thread->name();
-    if (length <= s.size()) {  // name must be NULL terminated hence,
-        return ERANGE;         // length must be > thread name
+    if (namelen <= s.size()) {  // name must be NULL terminated hence,
+        return ERANGE;          // namelen must be > thread name
     }
     strcpy(name, s.c_str());
     return 0;
