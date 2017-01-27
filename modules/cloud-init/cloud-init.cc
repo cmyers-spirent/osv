@@ -11,23 +11,24 @@
 #include <memory>
 #include "client.hh"
 #include <boost/asio.hpp>
+#include <boost/algorithm/string/replace.hpp>
 #include "data-source.hh"
 #include <osv/debug.hh>
 #include <osv/firmware.hh>
 #include <osv/hypervisor.hh>
 
 // we cannot include osv/dhcp.hh, hence direct declaration.
-extern "C" void dhcp_restart(bool wait);
+extern "C" void dhcp_renew(bool wait);
 
 // Set the hostname to given string.
 // If hostname changes, try to propagate the change to DHCP server too.
-void set_hostname_restart_dhcp(std::string hostname) {
+void set_hostname_renew_dhcp(std::string hostname) {
     if (hostname.length() > 0) {
         char old_hostname[256] = "";
         gethostname(old_hostname, sizeof(old_hostname));
         sethostname(hostname.c_str(), hostname.length());
         if (hostname != old_hostname) {
-            dhcp_restart(true);
+            dhcp_renew(true);
         }
     }
 }
@@ -189,7 +190,7 @@ Mount NFS mountpoint specified via cloud-init.
 
 Cloud-init config snippet:
 mounts:
- - [ nfs://192.168.122.1/ggg, /ggg, auto, uid=0 ]
+ - [ "192.168.122.1:/ggg", /ggg, "nfs", "uid=1000,gid=1000", "0", "0" ]
 
 This results in running command
 /tools/mount-nfs.so nfs://192.168.122.1/ggg/?uid=0 /ggg
@@ -197,22 +198,33 @@ This results in running command
 void mount_module::yaml_to_request(const YAML::Node& node, http::server::request& req)
 {
     std::string method = "PUT";
-    std::string nfs_server = node[0].as<string>();
+    std::string srv_hostname_dir = node[0].as<string>();
     std::string mount_point = node[1].as<string>();
-    // node[2] is "auto" flag - we ignore it
+    std::string type = node[2].as<string>();
     std::string options = "";
     if (node.size() >= 4) {
         options = node[3].as<string>();
     }
+    // node[4] and [5] are ignored.
+
+    if (type != "nfs") {
+        fprintf(stderr, "Ignoring unsupported filesystem type %s\n", type.c_str());
+        return;
+    }
+
+    auto pos = srv_hostname_dir.find_first_of(":");
+    auto srv_hostname = srv_hostname_dir.substr(0, pos);
+    auto srv_dir = srv_hostname_dir.substr(pos+1, srv_hostname_dir.size());
+    auto nfs_server = type + "://" + srv_hostname + srv_dir;
 
     http::server::header param;
     param.name = "command";
     param.value = "/tools/mount-nfs.so";
-    param.value += " " + nfs_server;
+    param.value += " \"" + nfs_server;
     if (options.size() > 0) {
-        param.value += "/?" + options;
+        param.value += "/?" + boost::replace_all_copy(options, ",", "&");
     }
-    param.value += " " + mount_point;
+    param.value += "\" " + mount_point;
     req.query_parameters.push_back(param);
     //fprintf(stderr, "MNT: param name='%s' value='%s'", param.name.c_str(), param.value.c_str());
     req.method = method;
@@ -245,7 +257,7 @@ void hostname_module::handle(const YAML::Node& doc)
 {
     auto hostname = doc.as<string>();
     debug("cloudinit hostname: %s\n", hostname.c_str());
-    set_hostname_restart_dhcp(hostname);
+    set_hostname_renew_dhcp(hostname);
 }
 
 void osvinit::add_module(std::shared_ptr<config_module> module)
@@ -283,7 +295,7 @@ void osvinit::load_from_cloud(bool ignore_missing_source)
         auto& ds = get_data_source();
 
         // Set the hostname from given data source, if it exists.
-        set_hostname_restart_dhcp(ds.external_hostname());
+        set_hostname_renew_dhcp(ds.external_hostname());
 
         // Load user data.
         user_data = ds.get_user_data();
