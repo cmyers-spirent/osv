@@ -31,7 +31,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr_machdep.h>
 
 #include <machine/xen/xen-os.h>
-#include <machine/xen/xenvar.h>
 #include <xen/xen_intr.h>
 #include <machine/xen/synch_bitops.h>
 #include <xen/evtchn.h>
@@ -48,17 +47,6 @@ __FBSDID("$FreeBSD$");
 // FIXME: preempt
 #define mtx_lock_spin(x) do {  mtx_lock(x); } while (0)
 #define mtx_unlock_spin(x) do { mtx_unlock(x); } while (0)
-
-// We don't expose an evtchn device.
-#define evtchn_device_upcall(x) do {} while (0)
-
-static inline unsigned int __ffs(unsigned int word)
-{
-        __asm__("bsfl %1,%0"
-                :"=r" (word)
-                :"rm" (word));
-        return word;
-}
 
 /*
  * irq_mapping_update_lock: in order to allow an interrupt to occur in a critical
@@ -165,12 +153,6 @@ static bool irq_is_legacy = 0;
 
 static uint8_t cpu_evtchn[NR_EVENT_CHANNELS];
 static unsigned long cpu_evtchn_mask[MAX_VIRT_CPUS][NR_EVENT_CHANNELS/LONG_BIT];
-
-#define active_evtchns(cpu,sh,idx)		\
-	((sh)->evtchn_pending[idx] &		\
-	 cpu_evtchn_mask[cpu][idx] &		\
-	 ~(sh)->evtchn_mask[idx])
-
 static void bind_evtchn_to_cpu(unsigned int chn, unsigned int cpu)
 {
 	clear_bit(chn, (unsigned long *)cpu_evtchn_mask[cpu_evtchn[chn]]);
@@ -189,9 +171,6 @@ static void init_evtchn_cpu_bindings(void)
 
 #else
 
-#define active_evtchns(cpu,sh,idx)		\
-	((sh)->evtchn_pending[idx] &		\
-	 ~(sh)->evtchn_mask[idx])
 #define bind_evtchn_to_cpu(chn,cpu)	((void)0)
 #define init_evtchn_cpu_bindings()	((void)0)
 #define cpu_from_evtchn(evtchn)		(0)
@@ -211,48 +190,6 @@ void evtchn_irq_is_legacy(void)
 void force_evtchn_callback(void)
 {
 	(void)HYPERVISOR_xen_version(0, NULL);
-}
-
-void 
-evtchn_do_upcall(struct trapframe *frame) 
-{
-	unsigned int   l1, l2;
-	unsigned int   l1i, l2i, port;
-	int            irq, cpu;
-	shared_info_t *s;
-	vcpu_info_t   *vcpu_info;
-	
-	cpu = PCPU_GET(cpuid);
-	s = HYPERVISOR_shared_info;
-	vcpu_info = &s->vcpu_info[cpu];
-
-	vcpu_info->evtchn_upcall_pending = 0;
-
-	/* NB. No need for a barrier here -- XCHG is a barrier on x86. */
-	l1 = xen_xchg(&vcpu_info->evtchn_pending_sel, 0);
-
-	while (l1 != 0) {
-		l1i = __ffs(l1);
-		l1 &= ~(1 << l1i);
-		
-		while ((l2 = active_evtchns(cpu, s, l1i)) != 0) {
-			l2i = __ffs(l2);
-
-			port = (l1i * LONG_BIT) + l2i;
-			if ((irq = evtchn_to_irq[port]) != -1) {
-				struct intsrc *isrc = intr_lookup_source(irq);
-				/* 
-				 * ack 
-				 */
-				mask_evtchn(port);
-				clear_evtchn(port); 
-
-				intr_execute_handlers(isrc, frame);
-			} else {
-				evtchn_device_upcall(port);
-			}
-		}
-	}
 }
 
 /*

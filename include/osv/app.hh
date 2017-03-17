@@ -10,8 +10,6 @@
 
 #include <functional>
 
-#ifdef _KERNEL
-
 #include <memory>
 #include <vector>
 #include <osv/sched.hh>
@@ -176,6 +174,11 @@ public:
      */
     std::string get_command();
 
+    /**
+      * Returns thread_id/PID of thread running app main() function.
+      */
+    pid_t get_main_thread_id();
+
     std::shared_ptr<application_runtime> runtime() const { return _runtime; }
     std::shared_ptr<elf::object> lib() const { return _lib; }
 
@@ -231,14 +234,7 @@ void with_all_app_threads(std::function<void(sched::thread &)> f, sched::thread&
 
 }
 
-#endif /* _KERNEL */
-
 namespace osv {
-/**
- * Creates a new app
- * args Arguments passed to the program's main() function.
- */
-void run(const std::vector<std::string>& args);
 
 namespace this_application {
 

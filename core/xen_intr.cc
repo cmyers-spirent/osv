@@ -5,11 +5,14 @@
  * BSD license as described in the LICENSE file in the top-level directory.
  */
 
-#include "xen.hh"
-#include "xen_intr.hh"
+#include <osv/xen.hh>
+#include <osv/xen_intr.hh>
 #include <bsd/porting/bus.h>
+#include <bsd/porting/netport.h>
 #include <machine/intr_machdep.h>
-#include "bitops.h"
+#include <machine/xen/xen-os.h>
+#include <xen/evtchn.h>
+#include <osv/bitops.h>
 #include <osv/debug.hh>
 
 #include <osv/trace.hh>
@@ -20,9 +23,6 @@ TRACEPOINT(trace_xen_irq_ret, "");
 // this measures time spent processing an interrupt
 TRACEPOINT(trace_xen_irq_exec, "");
 TRACEPOINT(trace_xen_irq_exec_ret, "");
-
-void unmask_evtchn(int vector);
-int evtchn_from_irq(int irq);
 
 namespace xen {
 
@@ -96,7 +96,7 @@ void xen_irq::do_irq()
                 void *arg = xen_allocated_irqs[port].arg;
                 xen_shared_info.evtchn_pending[l1i].fetch_and(~(1ULL << l2i));
                 xen_allocated_irqs[port].handler(arg);
-                unmask_evtchn(port);
+                xen_shared_info.evtchn_mask[l1i].fetch_and(~(1ULL << l2i));
             }
         }
         trace_xen_irq_exec_ret();
@@ -120,6 +120,13 @@ static xen_irq *xen_irq_handlers;
 void xen_handle_irq()
 {
     xen_irq_handlers->wake();
+}
+
+bool xen_ack_irq()
+{
+    auto cpu = sched::cpu::current();
+    HYPERVISOR_shared_info->vcpu_info[cpu->id].evtchn_upcall_pending = 0;
+    return true;
 }
 
 static __attribute__((constructor)) void setup_xen_irq()
@@ -148,14 +155,6 @@ intr_register_source(struct intsrc *isrc)
 {
     return 0;
 }
-
-void
-intr_execute_handlers(struct intsrc *isrc, struct trapframe *frame)
-{
-    // Make sure we are never called by the BSD code
-    abort();
-}
-
 struct intsrc *
 intr_lookup_source(int vector)
 {

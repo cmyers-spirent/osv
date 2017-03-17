@@ -596,11 +596,11 @@ bsd += bsd/sys/xdr/xdr.o
 bsd += bsd/sys/xdr/xdr_array.o
 bsd += bsd/sys/xdr/xdr_mem.o
 bsd += bsd/sys/xdr/xdr_reference.o
+bsd += bsd/sys/xen/evtchn.o
 
 ifeq ($(arch),x64)
 $(out)/bsd/%.o: COMMON += -DXEN -DXENHVM
 bsd += bsd/sys/xen/gnttab.o
-bsd += bsd/sys/xen/evtchn.o
 bsd += bsd/sys/xen/xenstore/xenstore.o
 bsd += bsd/sys/xen/xenbus/xenbus.o
 bsd += bsd/sys/xen/xenbus/xenbusb.o
@@ -878,11 +878,11 @@ objects += arch/x64/ioapic.o
 objects += arch/x64/apic.o
 objects += arch/x64/apic-clock.o
 objects += arch/x64/entry-xen.o
-objects += arch/x64/xen_intr.o
 objects += core/sampler.o
 objects += $(acpi)
 endif # x64
 
+objects += core/xen_intr.o
 objects += core/math.o
 objects += core/spinlock.o
 objects += core/lfmutex.o
@@ -1137,7 +1137,7 @@ musl += math/exp10l.o
 musl += math/exp2.o
 musl += math/exp2f.o
 musl += math/exp2l.o
-$(out)/musl/src/math/exp2l.o: CFLAGS += -Wno-error=unused-variable
+$(out)/musl/src/math/exp2l.o: CFLAGS += -Wno-unused-variable
 musl += math/expf.o
 musl += math/expl.o
 musl += math/expm1.o
@@ -1187,12 +1187,12 @@ musl += math/ldexpf.o
 musl += math/ldexpl.o
 musl += math/lgamma.o
 musl += math/lgamma_r.o
-$(out)/musl/src/math/lgamma_r.o: CFLAGS += -Wno-error=maybe-uninitialized
+$(out)/musl/src/math/lgamma_r.o: CFLAGS += -Wno-maybe-uninitialized
 musl += math/lgammaf.o
 musl += math/lgammaf_r.o
-$(out)/musl/src/math/lgammaf_r.o: CFLAGS += -Wno-error=maybe-uninitialized
+$(out)/musl/src/math/lgammaf_r.o: CFLAGS += -Wno-maybe-uninitialized
 musl += math/lgammal.o
-$(out)/musl/src/math/lgammal.o: CFLAGS += -Wno-error=maybe-uninitialized
+$(out)/musl/src/math/lgammal.o: CFLAGS += -Wno-maybe-uninitialized
 #musl += math/llrint.o
 #musl += math/llrintf.o
 #musl += math/llrintl.o
@@ -1226,9 +1226,12 @@ musl += math/modfl.o
 musl += math/nan.o
 musl += math/nanf.o
 musl += math/nanl.o
-#musl += math/nearbyint.o
-#musl += math/nearbyintf.o
-#musl += math/nearbyintl.o
+musl += math/nearbyint.o
+$(out)/musl/src/math/nearbyint.o: CFLAGS += -Wno-unknown-pragmas
+musl += math/nearbyintf.o
+$(out)/musl/src/math/nearbyintf.o: CFLAGS += -Wno-unknown-pragmas
+musl += math/nearbyintl.o
+$(out)/musl/src/math/nearbyintl.o: CFLAGS += -Wno-unknown-pragmas
 musl += math/nextafter.o
 musl += math/nextafterf.o
 musl += math/nextafterl.o
@@ -1612,6 +1615,7 @@ musl += temp/__randname.o
 musl += temp/mkdtemp.o
 musl += temp/mkstemp.o
 musl += temp/mktemp.o
+musl += temp/mkostemp.o
 musl += temp/mkostemps.o
 
 libc += time/__asctime.o
@@ -1693,6 +1697,8 @@ musl += fenv/fegetexceptflag.o
 musl += fenv/feholdexcept.o
 musl += fenv/fesetexceptflag.o
 musl += fenv/$(musl_arch)/fenv.o
+else
+musl += fenv/fenv.o
 endif
 
 musl += crypt/crypt_blowfish.o

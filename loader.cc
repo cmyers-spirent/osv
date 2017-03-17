@@ -447,7 +447,7 @@ void* do_main_thread(void *_main_args)
         bool append = (opt_redirect.substr(0, 2) == ">>");
         auto fn = opt_redirect.substr(append ? 2 : 0);
         int fd = open(fn.c_str(),
-                O_WRONLY | O_CREAT | (append ? 0 : O_TRUNC), 777);
+                O_WRONLY | O_CREAT | (append ? O_APPEND: O_TRUNC), 777);
         if (fd < 0) {
             perror("output redirection failed");
         } else {
@@ -465,7 +465,7 @@ void* do_main_thread(void *_main_args)
     // Run command lines in /init/* before the manual command line
     if (opt_init) {
         std::vector<std::vector<std::string>> init_commands;
-        struct dirent **namelist;
+        struct dirent **namelist = nullptr;
         int count = scandir("/init", &namelist, NULL, alphasort);
         for (int i = 0; i < count; i++) {
             if (!strcmp(".", namelist[i]->d_name) ||

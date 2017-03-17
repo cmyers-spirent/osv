@@ -163,8 +163,6 @@ do {                                                                    \
  */
 typedef struct { volatile int counter; } atomic_t;
 
-
-
 #define xen_xchg(ptr,v) \
         ((__typeof__(*(ptr)))__xchg((unsigned long)(v),(ptr),sizeof(*(ptr))))
 struct __xchg_dummy { unsigned long a[100]; };

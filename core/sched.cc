@@ -1185,6 +1185,7 @@ void thread::wake_lock(mutex* mtx, wait_record* wr)
             st->lock_sent = true;
         } else {
             st->st.store(status::waiting, std::memory_order_relaxed);
+            wr->clear();
         }
         // since we're in status::sending_lock, no one can wake us except mutex::unlock
     }
@@ -1776,6 +1777,12 @@ void with_all_threads(std::function<void(thread &)> f) {
         for (auto th : thread_map) {
             f(*th.second);
         }
+    }
+}
+
+void with_thread_by_id(unsigned id, std::function<void(thread *)> f) {
+    WITH_LOCK(thread_map_mutex) {
+        f(thread::find_by_id(id));
     }
 }
 

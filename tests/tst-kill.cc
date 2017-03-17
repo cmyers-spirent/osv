@@ -10,8 +10,9 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/socket.h>
-
-#include <osv/debug.hh>
+#include <stdio.h>
+#include <unistd.h>
+#include <errno.h>
 
 int tests = 0, fails = 0;
 
@@ -19,13 +20,13 @@ static void report(bool ok, const char* msg)
 {
     ++tests;
     fails += !ok;
-    debug("%s: %s\n", (ok ? "PASS" : "FAIL"), msg);
+    printf("%s: %s\n", (ok ? "PASS" : "FAIL"), msg);
 }
 
 int global = 0;
 
 void handler1(int sig) {
-    debug("handler1 called, sig=%d\n", sig);
+    printf("handler1 called, sig=%d, global=%d\n", sig, global);
     global = 1;
 }
 
@@ -48,7 +49,7 @@ int main(int ac, char** av)
     report(r == 0, "kill with signal 0 succeeds (and does nothing)");
     r = kill(-1, 0);
     report(r == 0, "kill of pid -1 is also fine");
-    r = kill(17, 0);
+    r = kill(17171717, 0);
     report(r == -1 && errno == ESRCH, "kill of non-existant process");
     r = kill(0, -2);
     report(r == -1 && errno == EINVAL, "kill with invalid signal number");
@@ -77,8 +78,16 @@ int main(int ac, char** av)
     report(global == 0, "1 more second after cancelling alarm - still global==0");
 
     //Test that SIG_ALRM interrupts system calls
-    sr = signal(SIGALRM, handler1);
-    report(sr != SIG_ERR, "set SIGALRM handler");
+    // TODO: a previous version of this test used signal(), but on Linux
+    // signal() restarts system calls, so this test would fail, so we need
+    // to use sigaction() here. We should add a test verifying that on OSv
+    // signal() also doesn't interrupt networking system calls (however,
+    // currently such a test would fail).
+    //sr = signal(SIGALRM, handler1);
+    struct sigaction a = {};
+    a.sa_handler = handler1;
+    r = sigaction(SIGALRM, &a, nullptr);
+    report(r == 0, "set SIGALRM handler");
 
     auto s = socket(AF_INET,SOCK_DGRAM,0);
     char buf[10];
@@ -130,6 +139,7 @@ int main(int ac, char** av)
     r = sigaction(SIGUSR1, nullptr, &oldact);
     report(r == 0 && oldact.sa_handler == handler1, "without SA_RESETHAND, signal handler is not reset");
     act.sa_flags = SA_RESETHAND;
+    global = 0;
     r = sigaction(SIGUSR1, &act, nullptr);
     report(r == 0, "set SIGUSR1 handler with SA_RESETHAND");
     r = kill(0, SIGUSR1);
@@ -143,12 +153,14 @@ int main(int ac, char** av)
     report(r == 0 && oldact.sa_handler == SIG_DFL, "with SA_RESETHAND, signal handler is reset");
 
 
-    debug("SUMMARY: %d tests, %d failures\n", tests, fails);
+    printf("SUMMARY: %d tests, %d failures\n", tests, fails);
 
     // At this point, handler1 might still be running, and if we return this
     // module, including handler1, might be unmapped. So sleep to make sure
     // that handler1 is done.
     sleep(1);
+
+    return fails == 0 ? 0 : 1;
 }
 
 
