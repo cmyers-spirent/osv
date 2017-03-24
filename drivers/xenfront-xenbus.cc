@@ -5,8 +5,6 @@
  * BSD license as described in the LICENSE file in the top-level directory.
  */
 
-#include "msr.hh"
-#include "xen.hh"
 #include <osv/types.h>
 #include <osv/mmu.hh>
 #include "string.h"
@@ -26,7 +24,6 @@
 int xs_attach(struct device *);
 
 int xenpci_irq_init(device_t device, struct xenpci_softc *scp);
-void evtchn_init(void *arg);
 
 int xenbusb_front_probe(device_t dev);
 int xenbusb_front_attach(device_t dev);
@@ -47,32 +44,16 @@ namespace xenfront {
 
 xenbus *xenbus::_instance = nullptr;
 
-xenbus::xenbus(pci::device& pci_dev)
+xenbus::xenbus()
     : hw_driver()
-    , _dev(pci_dev)
 {
-    int irqno = pci_dev.get_interrupt_line();
-
     if (_instance) {
         return;
     } else {
         _instance = this;
     }
 
-    parse_pci_config();
-
-    _dev.set_bus_master(true);
     _driver_name = std::string("xenfront-xenbus");
-
-    // From here on, all the OSV details are sorted, and we start the Xen
-    // bringup
-    evtchn_init(NULL);
-
-    if (processor::features().xen_vector_callback) {
-        xen::xen_set_callback();
-    } else {
-        _pgsi.reset(xen::xen_set_callback(irqno));
-    }
 
     xs_attach(&_xenstore_device);
 
@@ -134,27 +115,14 @@ void xenbus::for_each_child(std::function<void(xenfront_driver *d)> func)
 
 hw_driver* xenbus::probe(hw_device* dev)
 {
-    if (!processor::features().xen_pci) {
+    if (!is_xen())
         return nullptr;
-    }
-
-    if (auto pci_dev = dynamic_cast<pci::device*>(dev)) {
-        // dev id is the same for all xen devices?
-        if (pci_dev->get_subsystem_vid() == XEN_VENDOR_ID) {
-            return new xenbus(*pci_dev);
-        }
-    }
-    return nullptr;
+    return new xenbus();
 }
 
 void xenbus::dump_config()
 {
-    _dev.dump_config();
-}
-
-bool xenbus::parse_pci_config()
-{
-    return true;
+    /*TODO: print type, name and node path */
 }
 };
 
