@@ -46,6 +46,8 @@ bool logger::parse_configuration(void)
     add_tag("poll", logger_info);
     add_tag("dhcp", logger_info);
     add_tag("acpi", logger_error);
+    add_tag("vmw-rpc", logger_warn);
+    add_tag("vmw-tools", logger_warn);
 
     return (true);
 }

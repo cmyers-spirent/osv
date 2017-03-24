@@ -85,9 +85,11 @@ namespace vmw {
     class tools_reboot : public tools_statechange_callback {
     public:
         std::string key() { return "OS_Reboot"; }
-        void operator()(vmw::rpc::connection *connection __attribute__((unused)))
+        void operator()(vmw::rpc::connection *connection)
         {
+            tools_w("VMware host requested reboot\n");
             set_state(vmw::rpc::state::reboot);
+            vmw::rpc::send(connection, vmw::rpc::reply_ok);
             osv::reboot();
             tools_e("VMware guest reboot failed\n");
         }
@@ -95,10 +97,11 @@ namespace vmw {
 
     class tools_halt : public tools_statechange_callback {
         std::string key() { return "OS_Halt"; }
-        void operator()(vmw::rpc::connection *connection
-                        __attribute__((unused))) __attribute__((noreturn))
+        void operator()(vmw::rpc::connection *connection) __attribute__((noreturn))
         {
+            tools_w("VMware host requested halt\n");
             set_state(vmw::rpc::state::halt);
+            vmw::rpc::send(connection, vmw::rpc::reply_ok);
             osv::shutdown();
         }
     };
@@ -107,7 +110,7 @@ namespace vmw {
         std::string key() { return "OS_Suspend"; }
         void operator()(vmw::rpc::connection *connection)
         {
-            tools_i("VMware guest entering suspend state\n");
+            tools_w("VMware host requested suspend\n");
             set_state(vmw::rpc::state::suspend);
             vmw::rpc::send(connection, vmw::rpc::reply_ok);
         }
@@ -117,12 +120,22 @@ namespace vmw {
         std::string key() { return "OS_Resume"; }
         void operator()(vmw::rpc::connection *connection)
         {
-            tools_i("VMware guest resuming from suspend state\n");
+            tools_w("VMware guest resuming from suspend\n");
 
             tools::update_hostname();
             tools::update_os_info();
 
             set_state(vmw::rpc::state::resume);
+            vmw::rpc::send(connection, vmw::rpc::reply_ok);
+        }
+    };
+
+    class tools_poweron : public tools_statechange_callback {
+        std::string key() { return "OS_PowerOn"; }
+        void operator()(vmw::rpc::connection *connection)
+        {
+            tools_w("VMware guest powered on\n");
+            set_state(vmw::rpc::state::poweron);
             vmw::rpc::send(connection, vmw::rpc::reply_ok);
         }
     };
@@ -274,6 +287,7 @@ namespace vmw {
                     new vmw::tools_halt(),
                     new vmw::tools_suspend(),
                     new vmw::tools_resume(),
+                    new vmw::tools_poweron(),
                     new vmw::tools_broadcastIP()
              });
         }
@@ -312,7 +326,7 @@ namespace vmw {
                         callback->operator()(_tclo.get());
                     } else {
                         vmw::rpc::send(_tclo.get(), "ERROR Unknown command");
-                        tools_w("No callback found for \"%s\"\n", msg.c_str());
+                        tools_i("No callback found for \"%s\"\n", msg.c_str());
                     }
                 }
 
@@ -350,14 +364,22 @@ namespace vmw {
             return;
         }
 
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) != 0) {
+            tools_e("vmw::tools::update_guest_info gethostname call failed: %s\n",
+                    strerror(errno));
+            return;
+        }
+
         vmw::rpc::request(set_guest_info_string(vmw::rpc::guestinfo::dns_name,
-                                                { ubuf.nodename }));
+                                                { hostname }));
 
         vmw::rpc::request(set_guest_info_string(vmw::rpc::guestinfo::os_name,
-                                                { ubuf.sysname }));
+                                                { "other-64" }));
 
         vmw::rpc::request(set_guest_info_string(vmw::rpc::guestinfo::os_name_full,
-                                                { ubuf.sysname, ubuf.release, ubuf.version }));
+                                                { "OSv", osv::version().c_str(),
+                                                        static_cast<const char *>(ubuf.machine) }));
     }
 
     void tools::update_hostname()
