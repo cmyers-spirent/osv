@@ -47,7 +47,9 @@
 #include <errno.h>
 #include <assert.h>
 #include <string.h>
+#include <tuple>
 
+#include <osv/align.hh>
 #include <osv/prex.h>
 #include <osv/mutex.h>
 #include <osv/device.h>
@@ -92,6 +94,100 @@ struct partition_table_entry {
 	uint32_t total_sectors;
 } __attribute__((packed));
 
+static std::tuple<uint16_t, uint8_t, uint16_t> chs(off_t x)
+{
+	const uint16_t sec_per_track = 63;
+	const uint16_t heads = 255;
+
+	uint16_t cylinder = (x / sec_per_track) / heads;
+	uint8_t	 head	  = (x / sec_per_track) % heads;
+	uint16_t sector	  =	 x % sec_per_track + 1;
+
+	return (cylinder > 1023
+			? std::make_tuple((uint16_t)1023, (uint8_t)64, (uint16_t)253)
+			: std::make_tuple(cylinder, head, sector));
+}
+
+/*
+ * Examine the partition table of the specified device.  Try to
+ * merge any unallocated disk space into a swap partition so
+ * that it can be accessed.
+ */
+static void maybe_update_partition_table(struct device *dev)
+{
+	struct partition_table_entry *swap = nullptr;
+	struct partition_table_entry *free = nullptr;
+	struct buf *bp = nullptr;
+	unsigned long offset = 0;
+	int index = 0;
+	off_t last_byte = 0;
+
+	bread(dev, 0, &bp);
+
+	SCOPE_LOCK(sched_mutex);
+
+	if (((unsigned char*)bp->b_data)[510] == 0x55 &&
+		((unsigned char*)bp->b_data)[511] == 0xAA) {
+
+		for (offset = 0x1be, index = 0; offset < 0x1fe; offset += 0x10, index++) {
+			auto *entry = static_cast<struct partition_table_entry*>(bp->b_data + offset);
+
+			if (entry->system_id == 0
+				&& entry->starting_sector == 0) {
+				free = entry;
+			} else if (entry->system_id == 0x82) {
+				swap = entry;
+			} else {
+				off_t end = (((off_t)entry->rela_sector << 9)
+							 + ((off_t)entry->total_sectors << 9));
+				last_byte = std::max(last_byte, end);
+			}
+		}
+	}
+
+	/* Check to see if there is any free space */
+	last_byte += 512;  // offset by 1 sector so we don't overwrite existing data
+	off_t free_bytes = (last_byte < dev->size
+						? align_down(dev->size - last_byte, (off_t)512)
+						: 0);
+	off_t start = last_byte >> 9;
+	off_t size = free_bytes >> 9;
+	struct partition_table_entry *to_update = swap ? swap : free ? free : nullptr;
+
+	/* Check for conditions that make updates unnecessary */
+	if (!free_bytes || !to_update) {
+		brelse(bp);
+		return;
+	}
+
+	/* If we already have a swap partition, check to see if it is correct */
+	if (swap && swap->rela_sector == start && swap->total_sectors == size) {
+		brelse(bp);
+		return;
+	}
+
+	/* Make sure we're not going off the end of the disk */
+	assert((start + size) << 9 <= dev->size);
+
+	/* Free space has changed; update the partition table */
+	auto chs_start = chs(start);
+	to_update->starting_cylinder = std::get<0>(chs_start);
+	to_update->starting_head = std::get<1>(chs_start);
+	to_update->starting_sector = std::get<2>(chs_start);
+
+	auto chs_end = chs(start + size);
+	to_update->ending_cylinder = std::get<0>(chs_end);
+	to_update->ending_head = std::get<1>(chs_end);
+	to_update->ending_sector = std::get<2>(chs_end);
+
+	to_update->rela_sector = start;
+	to_update->total_sectors = size;
+	to_update->system_id = 0x82;
+
+	bwrite(bp);
+	return;
+}
+
 /*
  * read_partition_table - given a device @dev, create one subdevice per partition
  * found in that device.
@@ -103,6 +199,8 @@ struct partition_table_entry {
  */
 void read_partition_table(struct device *dev)
 {
+	maybe_update_partition_table(dev);
+
 	struct buf *bp;
 	unsigned long offset;
 	int index;
