@@ -36,34 +36,33 @@
 /*
  * Provide a separate set of types for the Linux types.
  */
-typedef int		l_int;
-typedef long l_long;
-typedef int64_t		l_longlong;
-typedef short		l_short;
-typedef unsigned int	l_uint;
-typedef unsigned long l_ulong;
-typedef uint64_t	l_ulonglong;
-typedef unsigned short	l_ushort;
+typedef int32_t		l_int;
+typedef int64_t		l_long;
+typedef int16_t		l_short;
+typedef uint32_t	l_uint;
+typedef uint64_t	l_ulong;
+typedef uint16_t	l_ushort;
 
 typedef l_ulong		l_uintptr_t;
 typedef l_long		l_clock_t;
 typedef l_int		l_daddr_t;
-typedef l_ushort	l_dev_t;
+typedef l_ulong		l_dev_t;
 typedef l_uint		l_gid_t;
-typedef l_ushort	l_gid16_t;
+typedef l_uint		l_uid_t;
 typedef l_ulong		l_ino_t;
 typedef l_int		l_key_t;
-typedef l_longlong	l_loff_t;
-typedef l_ushort	l_mode_t;
+typedef l_long		l_loff_t;
+typedef l_uint		l_mode_t;
 typedef l_long		l_off_t;
 typedef l_int		l_pid_t;
-typedef l_uint		l_size_t;
+typedef l_ulong		l_size_t;
+typedef l_long		l_ssize_t;
 typedef l_long		l_suseconds_t;
 typedef l_long		l_time_t;
-typedef l_uint		l_uid_t;
-typedef l_ushort	l_uid16_t;
 typedef l_int		l_timer_t;
 typedef l_int		l_mqd_t;
+typedef l_size_t	l_socklen_t;
+typedef l_ulong		l_fd_mask;
 
 typedef struct {
 	l_int		val[2];
@@ -75,6 +74,8 @@ typedef struct {
 } l_timeval;
 
 #define	l_fd_set	fd_set
+
+#define LINUX_SOL_SOCKET	1
 
 #define	LINUX_SO_DEBUG		1
 #define	LINUX_SO_REUSEADDR	2
@@ -107,12 +108,6 @@ struct l_sockaddr {
 	l_ushort	sa_family;
 	char		sa_data[14];
 } __packed;
-
-struct l_cmsghdr {
-	l_size_t	cmsg_len;
-	l_int		cmsg_level;
-	l_int		cmsg_type;
-};
 
 struct l_ifmap {
 	l_ulong		mem_start;

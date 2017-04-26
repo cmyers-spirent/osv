@@ -43,8 +43,8 @@
 #include <bsd/sys/net/if_dl.h>
 #include <bsd/sys/net/if_types.h>
 
-#include <bsd/sys/compat/linux/linux_socket.h>
 #include <bsd/sys/compat/linux/linux.h>
+#include <bsd/sys/compat/linux/linux_socket.h>
 
 #include <osv/file.h>
 #include <osv/socket.hh>
@@ -241,8 +241,8 @@ linux_ioctl_socket(socket_file *fp, u_long cmd, void *data)
     switch (cmd) {
     case SIOCSIFADDR:
     case SIOCSIFNETMASK:
-    case SIOCSIFDSTADDR: 
-    case SIOCSIFBRDADDR: 
+    case SIOCSIFDSTADDR:
+    case SIOCSIFBRDADDR:
         if ((ifp = ifunit_ref((char *)data)) == NULL)
             return (EINVAL);
         linux_to_bsd_ifreq((struct bsd_ifreq *)data) ;

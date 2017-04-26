@@ -40,6 +40,7 @@
 #include <bsd/uipc_syscalls.h>
 
 #include <bsd/sys/sys/limits.h>
+#include <bsd/sys/sys/malloc.h>
 #include <bsd/sys/sys/mbuf.h>
 #include <bsd/sys/sys/socket.h>
 #include <bsd/sys/sys/socketvar.h>
@@ -284,6 +285,16 @@ bsd_to_linux_domain(int domain)
 }
 
 static int
+bsd_to_linux_sockopt_level(int level)
+{
+	switch (level) {
+	case SOL_SOCKET:
+		return (LINUX_SOL_SOCKET);
+	}
+	return (level);
+}
+
+static int
 linux_to_bsd_ip_sockopt(int opt)
 {
 
@@ -403,7 +414,7 @@ bsd_to_linux_sockaddr(struct bsd_sockaddr *sa)
 
 	u_short family = sa->sa_family;
 	*(u_short *)sa = family;
-	
+
 	return (0);
 }
 
@@ -447,34 +458,59 @@ linux_to_bsd_cmsg_type(int cmsg_type)
 	}
 	return (-1);
 }
+#endif
 
 static int
 bsd_to_linux_cmsg_type(int cmsg_type)
 {
 
 	switch (cmsg_type) {
+#if 0
 	case SCM_RIGHTS:
 		return (LINUX_SCM_RIGHTS);
 	case SCM_CREDS:
 		return (LINUX_SCM_CREDENTIALS);
+#endif
+	case SCM_TIMESTAMP:
+		return (LINUX_SCM_TIMESTAMP);
 	}
 	return (-1);
 }
 
-#endif
-
 static int
-linux_to_bsd_msghdr(struct msghdr *hdr)
+linux_to_bsd_msghdr(struct msghdr *bhdr, const struct l_msghdr *lhdr)
 {
-	/* Ignore msg_control in OSv */
-	hdr->msg_control = NULL;
-	hdr->msg_flags = linux_to_bsd_msg_flags(hdr->msg_flags);
+	if (lhdr->msg_controllen > INT_MAX)
+		return (ENOBUFS);
+
+	bhdr->msg_name		= (void *)lhdr->msg_name;
+	bhdr->msg_namelen = lhdr->msg_namelen;
+	bhdr->msg_iov			= (iovec *)lhdr->msg_iov;
+	bhdr->msg_iovlen	= lhdr->msg_iovlen;
+	bhdr->msg_control = (void *)lhdr->msg_control;
+
+	/*
+	 * msg_controllen is skipped since BSD and LINUX control messages
+	 * are potentially different sizes (e.g. the cred structure used
+	 * by SCM_CREDS is different between the two operating system).
+	 *
+	 * The caller can set it (if necessary) after converting all the
+	 * control messages.
+	 */
+
+	bhdr->msg_flags = linux_to_bsd_msg_flags(lhdr->msg_flags);
 	return (0);
 }
 
 static int
-bsd_to_linux_msghdr(const struct msghdr *hdr)
+bsd_to_linux_msghdr(const struct msghdr *bhdr, struct l_msghdr *lhdr)
 {
+	lhdr->msg_name		= (l_uintptr_t)bhdr->msg_name;
+	lhdr->msg_namelen = bhdr->msg_namelen;
+	lhdr->msg_iov			= (l_uintptr_t)bhdr->msg_iov;
+	lhdr->msg_iovlen	= bhdr->msg_iovlen;
+	lhdr->msg_control = (l_uintptr_t)bhdr->msg_control;
+
 	/*
 	 * msg_controllen is skipped since BSD and LINUX control messages
 	 * are potentially different sizes (e.g. the cred structure used
@@ -893,7 +929,7 @@ linux_recvfrom(int s, void* buf, size_t len, int flags,
 	error = sys_recvfrom(s, (caddr_t)buf, len, bsd_flags, from,
 		fromlen, bytes);
 	bsd_to_linux_sockaddr(from);
-	
+
 	if (error)
 		return (error);
 	if (from) {
@@ -905,7 +941,7 @@ linux_recvfrom(int s, void* buf, size_t len, int flags,
 }
 
 int
-linux_sendmsg(int s, struct msghdr* msg, int flags, ssize_t* bytes)
+linux_sendmsg(int s, struct l_msghdr* linux_msg, int flags, ssize_t* bytes)
 {
 #if 0
 	struct cmsghdr *cmsg;
@@ -917,6 +953,7 @@ linux_sendmsg(int s, struct msghdr* msg, int flags, ssize_t* bytes)
 	void *data;
 #endif
 
+	struct msghdr msg;
 	int error;
 
 	/*
@@ -926,13 +963,10 @@ linux_sendmsg(int s, struct msghdr* msg, int flags, ssize_t* bytes)
 	 * order to handle this case.  This should be checked, but allows the
 	 * Linux ping to work.
 	 */
-	if (msg->msg_control != NULL && msg->msg_controllen == 0)
-		msg->msg_control = NULL;
+	if (linux_msg->msg_control != NULL && linux_msg->msg_controllen == 0)
+		linux_msg->msg_control = NULL;
 
-	/* FIXME: Translate msg control */
-	assert(msg->msg_control == NULL);
-
-	error = linux_to_bsd_msghdr(msg);
+	error = linux_to_bsd_msghdr(&msg, linux_msg);
 	if (error)
 		return (error);
 
@@ -1018,7 +1052,7 @@ linux_sendmsg(int s, struct msghdr* msg, int flags, ssize_t* bytes)
 	}
 #endif
 
-	error = linux_sendit(s, msg, flags, NULL, bytes);
+	error = linux_sendit(s, &msg, flags, NULL, bytes);
 
 #if 0
 bad:
@@ -1038,55 +1072,60 @@ struct linux_recvmsg_args {
 /* FIXME: OSv - flags are ignored, the flags
  * inside the msghdr are used instead */
 int
-linux_recvmsg(int s, struct msghdr *msg, int flags, ssize_t* bytes)
+linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 {
-#if 0
+	struct cmsghdr *cm;
+	struct msghdr msg;
+	struct l_cmsghdr *linux_cmsg = NULL;
 	socklen_t datalen, outlen;
+	struct iovec *iov;
 	struct mbuf *control = NULL;
-	struct mbuf **controlp;
+	struct mbuf **controlp = NULL;
+	struct timeval *ftmvl;
+	l_timeval ltmvl;
 	caddr_t outbuf;
 	void *data;
+#if 0
 	int error, i, fd, fds, *fdp;
 #endif
 	int error;
-	error = linux_to_bsd_msghdr(msg);
+
+	error = linux_to_bsd_msghdr(&msg, linux_msg);
 	if (error)
 		return (error);
 
-	if (msg->msg_name) {
-		error = linux_to_bsd_sockaddr((struct bsd_sockaddr *)msg->msg_name,
-		    msg->msg_namelen);
+	if (msg.msg_name) {
+		error = linux_to_bsd_sockaddr((struct bsd_sockaddr *)msg.msg_name,
+			msg.msg_namelen);
 		if (error)
 			goto bad;
 	}
 
-	assert(msg->msg_control == NULL);
-
-	error = kern_recvit(s, msg, NULL, bytes);
+	controlp = (msg.msg_control != NULL) ? &control : NULL;
+	error = kern_recvit(s, &msg, controlp, bytes);
 	if (error)
 		goto bad;
 
-	error = bsd_to_linux_msghdr(msg);
+	error = bsd_to_linux_msghdr(&msg, linux_msg);
 	if (error)
 		goto bad;
 
-	if (msg->msg_name) {
-		error = bsd_to_linux_sockaddr((struct bsd_sockaddr *)msg->msg_name);
+	if (linux_msg->msg_name) {
+		error = bsd_to_linux_sockaddr((struct bsd_sockaddr *)linux_msg->msg_name);
 		if (error)
 			goto bad;
 	}
-	if (msg->msg_name && msg->msg_namelen > 2) {
-		error = linux_sa_put((bsd_osockaddr*)msg->msg_name);
+	if (linux_msg->msg_name && linux_msg->msg_namelen > 2) {
+		error = linux_sa_put((bsd_osockaddr*)linux_msg->msg_name);
 		if (error)
 			goto bad;
 	}
 
-	assert(msg->msg_controllen == 0);
-	assert(msg->msg_control == NULL);
+	outbuf = (caddr_t)(linux_msg->msg_control);
+	outlen = 0;
 
-#if 0
 	if (control) {
-		linux_cmsg = malloc(L_CMSG_HDRSZ, M_TEMP, M_WAITOK | M_ZERO);
+		linux_cmsg = (struct l_cmsghdr *)malloc(L_CMSG_HDRSZ, M_TEMP, M_WAITOK | M_ZERO);
 
 		msg.msg_control = mtod(control, struct cmsghdr *);
 		msg.msg_controllen = control->m_hdr.mh_len;
@@ -1110,6 +1149,7 @@ linux_recvmsg(int s, struct msghdr *msg, int flags, ssize_t* bytes)
 
 			switch (cm->cmsg_type)
 			{
+#if 0
 			case SCM_RIGHTS:
 				if (args->flags & LINUX_MSG_CMSG_CLOEXEC) {
 					fds = datalen / sizeof(int);
@@ -1140,22 +1180,33 @@ linux_recvmsg(int s, struct msghdr *msg, int flags, ssize_t* bytes)
 				data = &linux_ucred;
 				datalen = sizeof(linux_ucred);
 				break;
+#endif
+			case SCM_TIMESTAMP:
+				if (datalen != sizeof(struct timeval)) {
+					error = EMSGSIZE;
+					goto bad;
+				}
+				ftmvl = (struct timeval *)data;
+				ltmvl.tv_sec = ftmvl->tv_sec;
+				ltmvl.tv_usec = ftmvl->tv_usec;
+				data = &ltmvl;
+				datalen = sizeof(ltmvl);
+				break;
 			}
 
 			if (outlen + LINUX_CMSG_LEN(datalen) >
-			    linux_msg.msg_controllen) {
+				linux_msg->msg_controllen) {
 				if (outlen == 0) {
 					error = EMSGSIZE;
 					goto bad;
 				} else {
-					linux_msg.msg_flags |=
-					    LINUX_MSG_CTRUNC;
+					linux_msg->msg_flags |=
+						LINUX_MSG_CTRUNC;
 					goto out;
 				}
 			}
 
 			linux_cmsg->cmsg_len = LINUX_CMSG_LEN(datalen);
-
 			error = copyout(linux_cmsg, outbuf, L_CMSG_HDRSZ);
 			if (error)
 				goto bad;
@@ -1173,8 +1224,10 @@ linux_recvmsg(int s, struct msghdr *msg, int flags, ssize_t* bytes)
 	}
 
 out:
-	linux_msg.msg_controllen = outlen;
-	error = copyout(&linux_msg, PTRIN(args->msg), sizeof(linux_msg));
+	linux_msg->msg_controllen = outlen;
+#if 0
+	error = copyout(linux_msg, &msg), sizeof(linux_msg));
+#endif
 
 bad:
 	free(iov);
@@ -1182,9 +1235,6 @@ bad:
 		m_freem(control);
 	if (linux_cmsg != NULL)
 		free(linux_cmsg);
-#endif
-
-bad:
 
 	return (error);
 }

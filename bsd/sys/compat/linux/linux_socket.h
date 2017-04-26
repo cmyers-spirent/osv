@@ -6,7 +6,7 @@
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer 
+ *    notice, this list of conditions and the following disclaimer
  *    in this position and unchanged.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
@@ -54,6 +54,29 @@
 
 #define LINUX_SCM_RIGHTS	0x01
 #define LINUX_SCM_CREDENTIALS   0x02
+#define LINUX_SCM_TIMESTAMP	0x1D
+
+struct l_msghdr {
+	l_uintptr_t     msg_name;
+	l_int           msg_namelen;
+	l_uintptr_t     msg_iov;
+	l_size_t        msg_iovlen;
+	l_uintptr_t     msg_control;
+	l_size_t        msg_controllen;
+	l_uint          msg_flags;
+};
+
+struct l_mmsghdr {
+	struct l_msghdr msg_hdr;
+	l_uint          msg_len;
+
+};
+
+struct l_cmsghdr {
+	l_size_t        cmsg_len;
+	l_int           cmsg_level;
+	l_int           cmsg_type;
+};
 
 /* Ancilliary data object information macros */
 
