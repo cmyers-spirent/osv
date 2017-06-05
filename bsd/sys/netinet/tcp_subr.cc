@@ -1689,6 +1689,8 @@ tcp_maxmtu(struct in_conninfo *inc, int *flags)
 		dst->sin_addr = inc->inc_faddr;
 		if (route_cache::lookup(dst, inc->inc_fibnum, &rte_one)) {
 			sro.ro_rt = &rte_one;
+			/* Setting RT_NORTREF prevents RO_RTFREE from attempting to free ro_rt. */
+			sro.ro_flags |= RT_NORTREF;
 		} else {
 			sro.ro_rt = NULL;
 		}
