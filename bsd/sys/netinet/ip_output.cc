@@ -259,7 +259,7 @@ again:
 #else
 			if (route_cache::lookup(dst, inp ? inp->inp_inc.inc_fibnum : M_GETFIB(m), &rte_one)) {
 				ro->ro_rt = &rte_one;
-				/* Setting RT_NORTREF prevents RO_RTFREE from attempting to free ro_rt/ */
+				/* Setting RT_NORTREF prevents RO_RTFREE from attempting to free ro_rt. */
 				ro->ro_flags |= RT_NORTREF;
 			} else {
 				ro->ro_rt = NULL;
