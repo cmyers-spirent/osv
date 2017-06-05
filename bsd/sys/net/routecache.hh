@@ -68,7 +68,12 @@
 class nonlockable_rtentry : public rtentry {
 public:
     nonlockable_rtentry(const nonlockable_rtentry &other) {
-        memcpy((void*) this, (const void*) &other, sizeof(*this));
+        memcpy((void*) this, (const void*) &other, sizeof(rtentry));
+        rt_gateway_storage = other.rt_gateway_storage;
+        if (rt_gateway_storage)
+            rt_gateway = (bsd_sockaddr *)rt_gateway_storage.get();
+        else
+            rt_gateway = NULL;
         // try to catch some monkey business
         rt_refcnt = -1;
         mutex_init(&rt_mtx._mutex);
@@ -77,13 +82,37 @@ public:
         // This shouldn't be necessary, but cache[dst] = ... uses it
         // because it first allocates an empty entry and then copies :(
     }
+    explicit nonlockable_rtentry(const rtentry &other) {
+        memcpy((void*) this, (const void*) &other, sizeof(rtentry));
+        const size_t gw_size = SA_SIZE(other.rt_gateway);
+        if (gw_size) {
+            rt_gateway_storage.reset(new u8[gw_size], std::default_delete<u8[]>());
+            rt_gateway = (bsd_sockaddr *)rt_gateway_storage.get();
+            memcpy((void*) rt_gateway, (const void*) other.rt_gateway, gw_size);
+        } else {
+            rt_gateway = NULL;
+        }
+        rt_refcnt = -1;
+        mutex_init(&rt_mtx._mutex);
+    }
     nonlockable_rtentry &operator=(const nonlockable_rtentry &other) {
-        memcpy((void*) this, (const void*) &other, sizeof(*this));
+        memcpy((void*) this, (const void*) &other, sizeof(rtentry));
+        rt_gateway_storage = other.rt_gateway_storage;
+        if (rt_gateway_storage)
+            rt_gateway = (bsd_sockaddr *)rt_gateway_storage.get();
+        else
+            rt_gateway = NULL;
         // try to catch some monkey business
         rt_refcnt = -1;
         mutex_init(&rt_mtx._mutex);
         return *this;
     }
+private:
+    /* Using a shared pointer for the rt_gateway memory so that if an update
+     * to the cache occurs while an entry's data is still in use externally,
+     * this memory isn't freed when the old copy is disposed of.
+     */
+    std::shared_ptr<u8> rt_gateway_storage;
 };
 
 // Silly routing table implementation, allowing search given address in list
@@ -154,7 +183,6 @@ public:
             return false;
         }
         memcpy(ret, ro.ro_rt, sizeof(*ret));
-        RO_RTFREE(&ro);
         ret->rt_refcnt = -1; // try to catch some monkey-business
         mutex_init(&ret->rt_mtx._mutex); // try to catch some monkey-business?
         // Add the result to the cache
@@ -163,10 +191,12 @@ public:
             auto new_cache = new routemap(*old_cache);
             auto netmask = ((bsd_sockaddr_in *)(ret->rt_ifa->ifa_netmask))->sin_addr.s_addr;
             auto addr = dst->sin_addr.s_addr;
-            new_cache->add(addr, netmask, *(nonlockable_rtentry *)ret);
+            new_cache->add(addr, netmask, nonlockable_rtentry(*ret));
             cache.assign(new_cache);
             osv::rcu_dispose(old_cache);
         }
+        // Need to ensure the entry exists until we've copied over the rt_gateway data.
+        RO_RTFREE(&ro);
         return true;
     }
 
