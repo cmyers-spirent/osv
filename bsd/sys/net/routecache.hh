@@ -54,6 +54,7 @@
 #include <bsd/sys/net/if.h>
 #include <bsd/sys/net/if_dl.h>
 #include <bsd/sys/netinet/in_var.h>
+#include <bsd/sys/netinet/in.h>
 
 #include <bsd/sys/net/route.h>
 
@@ -107,6 +108,10 @@ public:
         mutex_init(&rt_mtx._mutex);
         return *this;
     }
+
+    bool is_loopback(void) const {
+        return (rt_ifp && (rt_ifp->if_flags & IFF_LOOPBACK)) ? true : false;
+    }
 private:
     /* Using a shared pointer for the rt_gateway memory so that if an update
      * to the cache occurs while an entry's data is still in use externally,
@@ -141,10 +146,28 @@ public:
         }
         entries.emplace_front(a, n, r);
     }
+
+    // address should be in host order
+    bool is_loopback_net(u32 address) const {
+        return ((address >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET) ? true : false;
+    }
+
     nonlockable_rtentry *search(u32 address) {
         for (silly_rtable_entry &e : entries) {
-            if ((e.address & e.netmask) == (address & e.netmask)) {
-                return &e.rte;
+            if (e.rte.is_loopback() == false) {
+                if ((e.address & e.netmask) == (address & e.netmask)) {
+                    return &e.rte;
+                }
+            } else {
+                if (is_loopback_net(address)) {
+                    return &e.rte;
+                }
+                // We shouldn't use this entry on IP addresses just because they're
+                // on the same network as our non-loopback address. So match the entire
+                // address.
+                if (e.address == address) {
+                    return &e.rte;
+                }
             }
         }
         return nullptr;
