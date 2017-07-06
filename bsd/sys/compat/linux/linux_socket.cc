@@ -1251,6 +1251,10 @@ int linux_to_bsd_tcp_sockopt(int name)
 	// Not using the constants because we never know what will the compiler
 	// will insert here. They are interface, so they shouldn't change.
 	switch (name) {
+	case 1: // TCP_NODELAY
+		return 0x001;
+	case 3: // TCP_CORK
+		return 0x004; // TCP_NOPUSH
 	case 4: // TCP_KEEPIDLE
 		return 0x100;
 	case 5:  // TCP_KEEPINTVL
@@ -1260,7 +1264,10 @@ int linux_to_bsd_tcp_sockopt(int name)
 	case 13: // TCP_CONGESTION
 		return 0x40;
 	}
-	return name;
+	// The BSD and Linux constants here are so different, that anything
+	// not explicitly supported is not supported. We return -1, which
+	// causes our caller to return ENOPROTOOPT
+	return -1;
 }
 
 int
@@ -1273,11 +1280,10 @@ linux_setsockopt(int s, int level, int name, caddr_t val, int valsize)
 		name = linux_to_bsd_so_sockopt(name);
 		break;
 	case IPPROTO_IP:
-                name = linux_to_bsd_ip_sockopt(name);
+		name = linux_to_bsd_ip_sockopt(name);
 		break;
 	case IPPROTO_TCP:
 		name = linux_to_bsd_tcp_sockopt(name);
-		/* Linux TCP option values match BSD's */
 		break;
 	default:
 		name = -1;
@@ -1310,7 +1316,7 @@ linux_getsockopt(int s, int level, int name, void *val, socklen_t *valsize)
 		name = linux_to_bsd_so_sockopt(name);
 		break;
 	case IPPROTO_IP:
-                name = linux_to_bsd_ip_sockopt(name);
+		name = linux_to_bsd_ip_sockopt(name);
 		break;
 	case IPPROTO_TCP:
 		name = linux_to_bsd_tcp_sockopt(name);
