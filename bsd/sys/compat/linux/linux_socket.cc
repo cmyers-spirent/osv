@@ -1078,7 +1078,6 @@ linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 	struct msghdr msg;
 	struct l_cmsghdr *linux_cmsg = NULL;
 	socklen_t datalen, outlen;
-	struct iovec *iov;
 	struct mbuf *control = NULL;
 	struct mbuf **controlp = NULL;
 	struct timeval *ftmvl;
@@ -1230,7 +1229,9 @@ out:
 #endif
 
 bad:
+#if 0
 	free(iov);
+#endif
 	if (control != NULL)
 		m_freem(control);
 	if (linux_cmsg != NULL)
