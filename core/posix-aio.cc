@@ -458,7 +458,7 @@ int aio_suspend(const struct aiocb *const aiocb_list[],
             if (timeout) {
                 int ret = op_completed.wait(&op_completed_lock,
                                             (std::chrono::seconds(timeout->tv_sec) +
-                                             std::chrono::seconds(timeout->tv_nsec)));
+                                             std::chrono::nanoseconds(timeout->tv_nsec)));
 
                 if (ret == ETIMEDOUT) {
                     trace_aio_suspend_ret();
