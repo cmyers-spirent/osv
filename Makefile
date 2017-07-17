@@ -576,6 +576,7 @@ bsd += bsd/sys/netinet/in.o
 bsd += bsd/sys/netinet/in_pcb.o
 bsd += bsd/sys/netinet/in_proto.o
 bsd += bsd/sys/netinet/in_mcast.o
+$(out)/bsd/sys/netinet/in_mcast.o: COMMON += -Wno-maybe-uninitialized
 bsd += bsd/sys/netinet/in_rmx.o
 bsd += bsd/sys/netinet/ip_id.o
 bsd += bsd/sys/netinet/ip_icmp.o
@@ -617,6 +618,7 @@ bsd += bsd/sys/xen/xenbus/xenbusb.o
 bsd += bsd/sys/xen/xenbus/xenbusb_front.o
 bsd += bsd/sys/dev/xen/netfront/netfront.o
 bsd += bsd/sys/dev/xen/blkfront/blkfront.o
+bsd += bsd/sys/dev/hyperv/vmbus/hyperv.o
 endif
 
 bsd += bsd/sys/dev/random/hash.o
@@ -820,9 +822,10 @@ drivers += drivers/vmxnet3-queues.o
 drivers += drivers/virtio-blk.o
 drivers += drivers/virtio-scsi.o
 drivers += drivers/virtio-rng.o
-drivers += drivers/kvmclock.o drivers/xenclock.o
+drivers += drivers/kvmclock.o drivers/xenclock.o drivers/hypervclock.o
 drivers += drivers/acpi.o
 drivers += drivers/hpet.o
+drivers += drivers/rtc.o
 drivers += drivers/xenfront.o drivers/xenfront-xenbus.o drivers/xenfront-blk.o
 drivers += drivers/pvpanic.o
 drivers += drivers/ahci.o
