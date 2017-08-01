@@ -1337,11 +1337,11 @@ libc += misc/__longjmp_chk.o
 musl += multibyte/btowc.o
 musl += multibyte/internal.o
 musl += multibyte/mblen.o
-musl += multibyte/mbrlen.o
+libc += multibyte/mbrlen.o
 musl += multibyte/mbrtowc.o
 musl += multibyte/mbsinit.o
 musl += multibyte/mbsnrtowcs.o
-libc += multibyte/mbsrtowcs.o
+musl += multibyte/mbsrtowcs.o
 musl += multibyte/mbstowcs.o
 musl += multibyte/mbtowc.o
 musl += multibyte/wcrtomb.o
@@ -1668,6 +1668,8 @@ libc += time/tzset.o
 libc += time/wcsftime.o
 libc += time/ftime.o # verbatim copy of the file as in 4b15d9f46a2b@musl
 $(out)/libc/time/ftime.o: CFLAGS += -Ilibc/include
+
+musl += termios/tcflow.o
 
 musl += unistd/sleep.o
 musl += unistd/gethostname.o
