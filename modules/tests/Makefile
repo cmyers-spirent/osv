@@ -87,7 +87,7 @@ tests := tst-pthread.so misc-ramdisk.so tst-vblk.so tst-bsd-evh.so \
 	tst-ifaddrs.so tst-pthread-affinity-inherit.so tst-sem-timed-wait.so \
 	tst-ttyname.so tst-pthread-barrier.so tst-feexcept.so tst-math.so \
 	tst-sigaltstack.so tst-fread.so tst-tcp-cork.so tst-tcp-v6.so \
-	tst-calloc.so
+	tst-calloc.so tst-posix-aio.so
 
 #	libstatic-thread-variable.so tst-static-thread-variable.so \
 
@@ -134,7 +134,7 @@ solaris-tests := tst-solaris-taskq.so
 # FIXME: two of the test below can't compile now because of include path
 # (BSD and OSv header files get mixed up, etc.).
 #zfs-tests := misc-zfs-disk.so misc-zfs-io.so misc-zfs-arc.so
-zfs-tests := misc-zfs-io.so 
+zfs-tests := misc-zfs-io.so
 solaris-tests += $(zfs-tests)
 
 tests += $(solaris-tests)
@@ -142,7 +142,7 @@ tests += $(solaris-tests)
 $(zfs-tests:%=$(out)/tests/%): COMMON+= \
         -DBUILDING_ZFS \
         -I$(src)/bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs \
-        -I$(src)/bsd/sys/cddl/contrib/opensolaris/common/zfs 
+        -I$(src)/bsd/sys/cddl/contrib/opensolaris/common/zfs
 
 $(solaris-tests:%=$(out)/tests/%): COMMON+= \
         -Wno-strict-aliasing \

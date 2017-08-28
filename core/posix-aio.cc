@@ -213,7 +213,7 @@ struct aio_queue {
 
 /* Stuff needed for worker threads */
 static aio_queue aio_worker_queue;
-static bool need_workers = true;
+static std::atomic_flag need_workers = ATOMIC_FLAG_INIT;
 
 /* Stuff needed for I/O synchronization */
 static mutex   op_completed_lock;
@@ -268,15 +268,15 @@ static void process_aio_queue(struct aio_queue *queue)
 
 static void aio_init()
 {
-    for (size_t i = 0; i < sched::cpus.size(); i++) {
-        std::string name("aio");
-        name += std::to_string(i);
-        auto t = sched::thread::make([] { process_aio_queue(&aio_worker_queue); },
-                                     sched::thread::attr().name(name));
-        t->start();
+    if (!need_workers.test_and_set()) {
+        for (size_t i = 0; i < sched::cpus.size(); i++) {
+            std::string name("aio");
+            name += std::to_string(i);
+            auto t = sched::thread::make([] { process_aio_queue(&aio_worker_queue); },
+                                         sched::thread::attr().name(name));
+            t->start();
+        }
     }
-
-    need_workers = false;
 }
 
 TRACEPOINT(trace_aio_bio_completed, "");
@@ -343,8 +343,7 @@ static int bio_queue_strategy(struct aio_op *op)
 
 static int default_queue_strategy(struct aio_op *op)
 {
-    if (need_workers)
-        aio_init();
+    aio_init();
 
     aio_worker_queue.push(op);
 
@@ -429,12 +428,17 @@ int aio_cancel(int fd, struct aiocb *cb)
 }
 
 TRACEPOINT(trace_aio_suspend, "");
-TRACEPOINT(trace_aio_suspend_ret, "");
+TRACEPOINT(trace_aio_suspend_ret, "error=%d", int);
 
 int aio_suspend(const struct aiocb *const aiocb_list[],
                 int nitems, const struct timespec *timeout)
 {
     if (nitems < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (timeout && (timeout->tv_sec < 0 || timeout->tv_nsec > 1000000000)) {
         errno = EINVAL;
         return -1;
     }
@@ -450,18 +454,19 @@ int aio_suspend(const struct aiocb *const aiocb_list[],
             for (int i = 0; i < nitems; ++i) {
                 auto cb = aiocb_list[i];
                 if (cb && aio_error(cb) == 0) {
-                    trace_aio_suspend_ret();
+                    trace_aio_suspend_ret(0);
                     return 0;
                 }
             }
 
             if (timeout) {
-                int ret = op_completed.wait(&op_completed_lock,
-                                            (std::chrono::seconds(timeout->tv_sec) +
-                                             std::chrono::nanoseconds(timeout->tv_nsec)));
-
+                sched::timer tmr(*sched::thread::current());
+                tmr.set(osv::clock::uptime::duration(
+                            std::chrono::seconds(timeout->tv_sec) +
+                            std::chrono::nanoseconds(timeout->tv_nsec)));
+                int ret = op_completed.wait(&op_completed_lock, &tmr);
                 if (ret == ETIMEDOUT) {
-                    trace_aio_suspend_ret();
+                    trace_aio_suspend_ret(ret);
                     errno = EAGAIN;
                     return -1;
                 }
