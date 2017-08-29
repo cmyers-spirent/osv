@@ -1334,6 +1334,9 @@ libc += misc/mntent.o
 musl += misc/nftw.o
 libc += misc/__longjmp_chk.o
 
+musl += signal/killpg.o
+musl += signal/siginterrupt.o
+
 musl += multibyte/btowc.o
 musl += multibyte/internal.o
 musl += multibyte/mblen.o
@@ -1402,6 +1405,7 @@ libc += process/execle.o
 musl += process/execv.o
 musl += process/execl.o
 libc += process/waitpid.o
+musl += process/wait.o
 
 libc += arch/$(arch)/setjmp/setjmp.o
 libc += arch/$(arch)/setjmp/longjmp.o
@@ -1683,6 +1687,9 @@ libc += unistd/getsid.o
 libc += unistd/setsid.o
 libc += unistd/ttyname_r.o
 libc += unistd/ttyname.o
+musl += unistd/tcgetpgrp.o
+musl += unistd/tcsetpgrp.o
+musl += unistd/setpgrp.o
 
 musl += regex/fnmatch.o
 musl += regex/glob.o
