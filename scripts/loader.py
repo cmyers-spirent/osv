@@ -313,7 +313,7 @@ class osv_heap(gdb.Command):
                              gdb.COMMAND_USER, gdb.COMPLETE_NONE)
     def invoke(self, arg, from_tty):
         for page_range in free_page_ranges():
-            print('%s 0x%016x' % (page_range, page_range['size']))
+            print('%s 0x%016x' % (page_range, ulong(page_range['size'])))
 
 class osv_memory(gdb.Command):
     def __init__(self):
@@ -625,7 +625,7 @@ class osv_mmap(gdb.Command):
                 file_ptr = file_vma['_file']['px'].cast(gdb.lookup_type('file').pointer())
                 dentry_ptr = file_ptr['f_dentry']['px'].cast(gdb.lookup_type('dentry').pointer())
                 print('0x%016x 0x%016x %s flags=%s perm=%s offset=0x%08x path=%s'
-                        % (start, end, size, flags, perm, file_vma['_offset'], dentry_ptr['d_path'].string()))
+                        % (start, end, size, flags, perm, ulong(file_vma['_offset']), dentry_ptr['d_path'].string()))
             else:
                 print('0x%016x 0x%016x %s flags=%s perm=%s' % (start, end, size, flags, perm))
 
@@ -797,7 +797,7 @@ class intrusive_list:
         if member_hook:
             self.link_offset = member_hook.template_argument(2).cast(self.size_t)
         else:
-            self.link_offset = get_base_class_offset(self.node_type, "boost::intrusive::list_base_hook")
+            self.link_offset = int(get_base_class_offset(self.node_type, "boost::intrusive::list_base_hook"))
             if self.link_offset == None:
                 raise Exception("Class does not extend list_base_hook: " + str(self.node_type))
 
@@ -1028,7 +1028,7 @@ class osv_info_callouts(gdb.Command):
             fname = callout['c_fn']
 
             # time
-            t = int(callout['c_to_ns'])
+            t = ulong(callout['c_to_ns'])
 
             # flags
             CALLOUT_ACTIVE = 0x0002
@@ -1385,15 +1385,15 @@ def show_virtio_driver(v):
     for qidx in range(0, to_int(vb['_num_queues'])):
         q = vb['_queues'][qidx]
         gdb.write('  queue %d at %s\n' % (qidx, q))
-        avail_guest_idx = q['_avail']['_idx']['_M_i']
-        avail_host_idx = q['_avail_event']['_M_i']
+        avail_guest_idx = int(q['_avail']['_idx']['_M_i'])
+        avail_host_idx = int(q['_avail_event']['_M_i'])
         gdb.write('    avail g=0x%x h=0x%x (%d)\n'
                   % (avail_host_idx, avail_guest_idx, avail_guest_idx - avail_host_idx))
-        used_host_idx = q['_used']['_idx']['_M_i']
-        used_guest_idx = q['_used_event']['_M_i']
+        used_host_idx = int(q['_used']['_idx']['_M_i'])
+        used_guest_idx = int(q['_used_event']['_M_i'])
         gdb.write('    used   h=0x%x g=0x%x (%d)\n'
                   % (used_host_idx, used_guest_idx, used_host_idx - used_guest_idx))
-        used_flags = q['_used']['_flags']['_M_i']
+        used_flags = int(q['_used']['_flags']['_M_i'])
         gdb.write('    used notifications: %s\n' %
                   ('disabled' if used_flags & 1 else 'enabled',))
 
@@ -1478,9 +1478,7 @@ def runqueue(cpuid, node=None):
     if node == None:
         cpus = gdb.lookup_global_symbol('sched::cpus').value()
         cpu = cpus['_M_impl']['_M_start'][cpuid]
-        rq = cpu['runqueue']
-        p = rq['data_']['node_plus_pred_']
-        node = p['header_plus_size_']['header_']['parent_']
+        node = intrusive_set_root_node(cpu['runqueue'])
 
     if node:
         offset = gdb.parse_and_eval('(int)&((sched::thread *)0)->_runqueue_link')
