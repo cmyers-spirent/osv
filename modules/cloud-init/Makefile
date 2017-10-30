@@ -8,8 +8,8 @@ arch = x64
 
 boost-libs := -lboost_system -lboost_filesystem
 
-HTTPSERVER_DIR = ../../modules/httpserver
-INCLUDES += -I$(HTTPSERVER_DIR)
+HTTPSERVER_API_DIR = ../../modules/httpserver-api
+INCLUDES += -I$(HTTPSERVER_API_DIR)
 
 # the build target executable:
 TARGET = cloud-init
@@ -18,8 +18,8 @@ CPP_FILES += ovf-data-source.cc
 OBJ_FILES := $(addprefix obj/,$(CPP_FILES:.cc=.o))
 DEPS := $(OBJ_FILES:.o=.d)
 
-STUB_HTTPSERVER_LIBS = $(HTTPSERVER_DIR)/httpserver-stub.so
-LIBS = -lpthread $(boost-libs) $(DEPEDNDS_LIBS) -lyaml-cpp -L$(HTTPSERVER_DIR)/ -lhttpserver
+STUB_HTTPSERVER_LIBS = $(HTTPSERVER_API_DIR)/httpserver-stub.so
+LIBS = -lpthread $(boost-libs) $(DEPEDNDS_LIBS) -lyaml-cpp -L$(HTTPSERVER_API_DIR)/ -lhttpserver-api
 
 quiet = $(if $V, $1, @echo " $2"; $1)
 very-quiet = $(if $V, $1, @$1)
