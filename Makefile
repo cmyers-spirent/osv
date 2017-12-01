@@ -318,7 +318,7 @@ COMMON = $(autodepend) -g -Wall -Wno-pointer-arith $(CFLAGS_WERROR) -Wformat=0 -
 	-include compiler/include/intrinsics.hh \
 	$(do-sys-includes) \
 	$(arch-cflags) $(conf-opt) $(acpi-defines) $(tracing-flags) $(gcc-sysroot) \
-	$(configuration) -D__OSV__ -D__XEN_INTERFACE_VERSION__="0x00030207" -DARCH_STRING=$(ARCH_STR) $(EXTRA_FLAGS)
+	$(configuration) -D__OSV__ -D__XEN_INTERFACE_VERSION__="0x00030208" -DARCH_STRING=$(ARCH_STR) $(EXTRA_FLAGS)
 ifeq ($(gcc_include_env), external)
 ifeq ($(boost_env), external)
   COMMON += -nostdinc
@@ -611,6 +611,7 @@ bsd += bsd/sys/xen/evtchn.o
 
 ifeq ($(arch),x64)
 $(out)/bsd/%.o: COMMON += -DXEN -DXENHVM
+$(out)/bsd/sys/xen/gnttab.o: conf-opt := $(conf-opt) -O0
 bsd += bsd/sys/xen/gnttab.o
 bsd += bsd/sys/xen/xenstore/xenstore.o
 bsd += bsd/sys/xen/xenbus/xenbus.o

@@ -86,7 +86,7 @@ extern xen_pfn_t *xen_machine_phys;
 #undef ADD_ISA_HOLE /* XXX */
 
 #ifdef ADD_ISA_HOLE
-#define ISA_INDEX_OFFSET 1024 
+#define ISA_INDEX_OFFSET 1024
 #define ISA_PDR_OFFSET 1
 #else
 #define ISA_INDEX_OFFSET 0

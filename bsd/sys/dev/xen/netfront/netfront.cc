@@ -998,7 +998,7 @@ refill:
                     "reservation\n", __func__);
         }
     } else {
-        wmb();
+        xen_wmb();
     }
 
     /* Above is a suitable barrier to ensure backend will see requests. */
@@ -1037,7 +1037,7 @@ xn_rxeof(struct netfront_info *np)
         ifp = np->xn_ifp;
 
         rp = np->rx.sring->rsp_prod;
-        rmb();    /* Ensure we see queued responses up to 'rp'. */
+        xen_rmb();    /* Ensure we see queued responses up to 'rp'. */
 
         i = np->rx.rsp_cons;
         while ((i != rp)) {
@@ -1171,7 +1171,7 @@ xn_txeof(struct netfront_info *np)
 
     do {
         prod = np->tx.sring->rsp_prod;
-        rmb(); /* Ensure we see responses up to 'rp'. */
+        xen_rmb(); /* Ensure we see responses up to 'rp'. */
 
         for (i = np->tx.rsp_cons; i != prod; i++) {
             txr = RING_GET_RESPONSE(&np->tx, i);
@@ -1228,7 +1228,7 @@ xn_txeof(struct netfront_info *np)
         np->tx.sring->rsp_event =
             prod + ((np->tx.sring->req_prod - prod) >> 1) + 1;
 
-        mb();
+        xen_mb();
     } while (prod != np->tx.sring->rsp_prod);
 
     if (np->tx_full &&

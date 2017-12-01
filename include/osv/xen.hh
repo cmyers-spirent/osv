@@ -36,7 +36,7 @@ struct xen_vcpu_info {
 };
 
 struct xen_shared_info {
-    struct xen_vcpu_info vcpu_info[MAX_VIRT_CPUS];
+    struct xen_vcpu_info vcpu_info[XEN_LEGACY_MAX_VCPUS];
 
     std::atomic<unsigned long> evtchn_pending[sizeof(unsigned long) * 8];
     std::atomic<unsigned long> evtchn_mask[sizeof(unsigned long) * 8];

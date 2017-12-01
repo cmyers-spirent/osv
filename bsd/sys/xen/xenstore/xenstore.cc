@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <xen/xen_intr.h>
 
 #include <xen/interface/hvm/params.h>
+#include <xen/hvm.h>
 
 #include <xen/xenstore/xenstorevar.h>
 #include <xen/xenstore/xenstore_internal.h>
@@ -334,7 +335,8 @@ split(char *strings, u_int len, u_int *num)
 	const char **ret;
 
 	/* Protect against unterminated buffers. */
-	strings[len - 1] = '\0';
+	if (len)
+		strings[len - 1] = '\0';
 
 	/* Count the strings. */
 	*num = extract_strings(strings, /*dest*/NULL, len);
@@ -1119,7 +1121,7 @@ xs_identify(driver_t *driver, device_t parent)
  *
  * \param dev
  */
-int 
+int
 xs_probe(device_t dev)
 {
 	/*
@@ -1147,7 +1149,7 @@ xs_attach_deferred(void *arg)
  * Attach to the XenStore.
  *
  * This routine also prepares for the probe/attach of drivers that rely
- * on the XenStore.  
+ * on the XenStore.
  */
 int
 xs_attach(device_t dev)
@@ -1270,17 +1272,17 @@ xs_resume(device_t dev __unused)
 }
 
 /*-------------------- Private Device Attachment Data  -----------------------*/
-static device_method_t xenstore_methods[] = { 
-	/* Device interface */ 
+static device_method_t xenstore_methods[] = {
+	/* Device interface */
 	DEVMETHOD(device_identify,	xs_identify),
-	DEVMETHOD(device_probe,         xs_probe), 
-	DEVMETHOD(device_attach,        xs_attach), 
-	DEVMETHOD(device_detach,        bus_generic_detach), 
-	DEVMETHOD(device_shutdown,      bus_generic_shutdown), 
-	DEVMETHOD(device_suspend,       xs_suspend), 
-	DEVMETHOD(device_resume,        xs_resume), 
- 
-	/* Bus interface */ 
+	DEVMETHOD(device_probe,         xs_probe),
+	DEVMETHOD(device_attach,        xs_attach),
+	DEVMETHOD(device_detach,        bus_generic_detach),
+	DEVMETHOD(device_shutdown,      bus_generic_shutdown),
+	DEVMETHOD(device_suspend,       xs_suspend),
+	DEVMETHOD(device_resume,        xs_resume),
+
+	/* Bus interface */
 	DEVMETHOD(bus_add_child,        bus_generic_add_child),
 	DEVMETHOD(bus_alloc_resource,   bus_generic_alloc_resource),
 	DEVMETHOD(bus_release_resource, bus_generic_release_resource),
@@ -1288,11 +1290,11 @@ static device_method_t xenstore_methods[] = {
 	DEVMETHOD(bus_deactivate_resource, bus_generic_deactivate_resource),
 
 	DEVMETHOD_END
-}; 
+};
 
 DEFINE_CLASS_0(xenstore, xenstore_driver, xenstore_methods, 0);
-static devclass_t xenstore_devclass; 
- 
+static devclass_t xenstore_devclass;
+
 #ifdef XENHVM
 DRIVER_MODULE(xenstore, xenpci, xenstore_driver, xenstore_devclass, 0, 0);
 #else

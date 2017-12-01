@@ -1,11 +1,11 @@
 /******************************************************************************
  * gnttab.c
- * 
+ *
  * Two sets of functionality:
  * 1. Granting foreign access to our memory reservation.
  * 2. Accessing others' memory reservations via grant references.
  * (i.e., mechanisms for both sender and recipient of grant references)
- * 
+ *
  * Copyright (c) 2005, Christopher Clark
  * Copyright (c) 2004, K A Fraser
  */
@@ -140,7 +140,7 @@ gnttab_grant_foreign_access(domid_t domid, unsigned long frame, int readonly,
 
 	shared[ref].frame = frame;
 	shared[ref].domid = domid;
-	wmb();
+	xen_wmb();
 	shared[ref].flags = GTF_permit_access | (readonly ? GTF_readonly : 0);
 
 	if (result)
@@ -156,7 +156,7 @@ gnttab_grant_foreign_access_ref(grant_ref_t ref, domid_t domid,
 
 	shared[ref].frame = frame;
 	shared[ref].domid = domid;
-	wmb();
+	xen_wmb();
 	shared[ref].flags = GTF_permit_access | (readonly ? GTF_readonly : 0);
 }
 
@@ -221,7 +221,7 @@ gnttab_end_foreign_access_references(u_int count, grant_ref_t *refs)
 			head = *refs;
 		} else {
 			/*
-			 * XXX This needs to be fixed so that the ref 
+			 * XXX This needs to be fixed so that the ref
 			 * is placed on a list to be freed up later.
 			 */
 			printf("%s: WARNING: leaking g.e. still in use!\n",
@@ -262,7 +262,7 @@ gnttab_grant_foreign_transfer_ref(grant_ref_t ref, domid_t domid,
 {
 	shared[ref].frame = pfn;
 	shared[ref].domid = domid;
-	wmb();
+	xen_wmb();
 	shared[ref].flags = GTF_accept_transfer;
 }
 
@@ -289,7 +289,7 @@ gnttab_end_foreign_transfer_ref(grant_ref_t ref)
 	}
 
 	/* Read the frame number /after/ reading completion status. */
-	rmb();
+	xen_rmb();
 	frame = shared[ref].frame;
 	KASSERT(frame != 0, ("grant table inconsistent"));
 
@@ -496,7 +496,7 @@ unmap_pte_fn(pte_t *pte, struct page *pmd_page,
 }
 #endif
 
-#if notyet 
+#if notyet
 
 static int
 gnttab_map(unsigned int start_idx, unsigned int end_idx)
@@ -533,7 +533,7 @@ gnttab_map(unsigned int start_idx, unsigned int end_idx)
 	}
 
 	for (i = 0; i < nr_gframes; i++)
-		PT_SET_MA(((caddr_t)shared) + i*PAGE_SIZE, 
+		PT_SET_MA(((caddr_t)shared) + i*PAGE_SIZE,
 		    ((vm_paddr_t)frames[i]) << PAGE_SHIFT | PG_RW | PG_V);
 
 	free(frames, M_DEVBUF);
@@ -629,7 +629,7 @@ gnttab_expand(unsigned int req_entries)
 	return (error);
 }
 
-int 
+int
 gnttab_init()
 {
 	int i;
@@ -687,4 +687,4 @@ ini_nomem:
 
 }
 
-MTX_SYSINIT(gnttab, &gnttab_list_lock, "GNTTAB LOCK", MTX_DEF); 
+MTX_SYSINIT(gnttab, &gnttab_list_lock, "GNTTAB LOCK", MTX_DEF);

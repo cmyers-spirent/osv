@@ -1,8 +1,8 @@
 /******************************************************************************
  * evtchn.c
- * 
+ *
  * Communication via Xen event channels.
- * 
+ *
  * Copyright (c) 2002-2005, K A Fraser
  * Copyright (c) 2005-2006 Kip Macy
  */
@@ -65,14 +65,14 @@ struct xenpic_intsrc {
 	int	  xp_masked;
 };
 
-struct xenpic { 
-	struct pic           *xp_dynirq_pic; 
-	struct pic           *xp_pirq_pic;   
-	uint16_t             xp_numintr; 
-	struct xenpic_intsrc xp_pins[0]; 
-}; 
+struct xenpic {
+	struct pic           *xp_dynirq_pic;
+	struct pic           *xp_pirq_pic;
+	uint16_t             xp_numintr;
+	struct xenpic_intsrc xp_pins[0];
+};
 
-#define TODO            printf("%s: not implemented!\n", __func__) 
+#define TODO            printf("%s: not implemented!\n", __func__)
 
 /* IRQ <-> event-channel mappings. */
 static int evtchn_to_irq[NR_EVENT_CHANNELS];
@@ -88,7 +88,7 @@ enum {
 	IRQT_LOCAL_PORT,
 	IRQT_CALLER_PORT,
 	_IRQT_COUNT
-	
+
 };
 
 
@@ -129,15 +129,15 @@ static inline unsigned int type_from_irq(int irq)
 }
 
 
-/* IRQ <-> VIRQ mapping. */ 
- 
-/* IRQ <-> IPI mapping. */ 
+/* IRQ <-> VIRQ mapping. */
+
+/* IRQ <-> IPI mapping. */
 #ifndef NR_IPIS
 #ifdef SMP
 #error "NR_IPIS not defined"
 #endif
-#define NR_IPIS 1 
-#endif 
+#define NR_IPIS 1
+#endif
 
 /* Bitmap indicating which PIRQs require Xen to be notified on unmask. */
 static unsigned long pirq_needs_unmask_notify[NR_PIRQS/sizeof(unsigned long)];
@@ -152,7 +152,7 @@ static bool irq_is_legacy = 0;
 #ifdef SMP
 
 static uint8_t cpu_evtchn[NR_EVENT_CHANNELS];
-static unsigned long cpu_evtchn_mask[MAX_VIRT_CPUS][NR_EVENT_CHANNELS/LONG_BIT];
+static unsigned long cpu_evtchn_mask[XEN_LEGACY_MAX_VCPUS][NR_EVENT_CHANNELS/LONG_BIT];
 static void bind_evtchn_to_cpu(unsigned int chn, unsigned int cpu)
 {
 	clear_bit(chn, (unsigned long *)cpu_evtchn_mask[cpu_evtchn[chn]]);
@@ -196,26 +196,26 @@ void force_evtchn_callback(void)
  * Send an IPI from the current CPU to the destination CPU.
  */
 void
-ipi_pcpu(unsigned int cpu, int vector) 
-{ 
+ipi_pcpu(unsigned int cpu, int vector)
+{
         int irq;
 
 	irq = pcpu_find(cpu)->pc_ipi_to_irq[vector];
-	
-        notify_remote_via_irq(irq); 
-} 
 
-static int 
+        notify_remote_via_irq(irq);
+}
+
+static int
 find_unbound_irq(void)
 {
 	int dynirq, irq;
-	
+
 	for (dynirq = 0; dynirq < NR_IRQS; dynirq++) {
 		irq = dynirq_to_irq(dynirq);
 		if (irq_bindcount[irq] == 0)
 			break;
 	}
-	
+
 	if (irq == NR_IRQS)
 		panic("No available IRQ to bind to: increase NR_IRQS!\n");
 
@@ -254,11 +254,11 @@ bind_local_port_to_irq(unsigned int local_port, int * port)
 
         KASSERT(evtchn_to_irq[local_port] == -1,
 	    ("evtchn_to_irq inconsistent"));
-	
+
         if ((irq = find_unbound_irq()) < 0) {
                 struct evtchn_close close = { .port = local_port };
                 HYPERVISOR_event_channel_op(EVTCHNOP_close, &close);
-		
+
                 goto out;
         }
 
@@ -303,7 +303,7 @@ bind_interdomain_evtchn_to_irq(unsigned int remote_domain,
         return err ? : bind_local_port_to_irq(bind_interdomain.local_port, port);
 }
 
-static int 
+static int
 bind_virq_to_irq(unsigned int virq, unsigned int cpu, int * port)
 {
 	struct evtchn_bind_virq bind_virq;
@@ -338,7 +338,7 @@ out:
 }
 
 
-static int 
+static int
 bind_ipi_to_irq(unsigned int ipi, unsigned int cpu, int * port)
 {
 	struct evtchn_bind_ipi bind_ipi;
@@ -346,7 +346,7 @@ bind_ipi_to_irq(unsigned int ipi, unsigned int cpu, int * port)
 	int evtchn = 0;
 
 	mtx_lock_spin(&irq_mapping_update_lock);
-	
+
 	if ((irq = pcpu_find(cpu)->pc_ipi_to_irq[ipi]) == -1) {
 		if ((irq = find_unbound_irq()) < 0)
 			goto out;
@@ -365,14 +365,14 @@ bind_ipi_to_irq(unsigned int ipi, unsigned int cpu, int * port)
 	irq_bindcount[irq]++;
 	*port = evtchn;
 out:
-	
+
 	mtx_unlock_spin(&irq_mapping_update_lock);
 
 	return irq;
 }
 
 
-static void 
+static void
 unbind_from_irq(int irq)
 {
 	struct evtchn_close close;
@@ -408,7 +408,7 @@ unbind_from_irq(int irq)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-int 
+int
 bind_caller_port_to_irqhandler(unsigned int caller_port,
     const char *devname, driver_intr_t handler, void *arg,
     unsigned long irqflags, unsigned int *irqp)
@@ -435,7 +435,7 @@ bind_caller_port_to_irqhandler(unsigned int caller_port,
 	return (0);
 }
 
-int 
+int
 bind_listening_port_to_irqhandler(unsigned int remote_domain,
     const char *devname, driver_intr_t handler, void *arg,
     unsigned long irqflags, unsigned int *irqp)
@@ -456,11 +456,11 @@ bind_listening_port_to_irqhandler(unsigned int remote_domain,
 		unmask_evtchn(port);
 	if (irqp)
 		*irqp = irq;
-	
+
 	return (0);
 }
 
-int 
+int
 bind_interdomain_evtchn_to_irqhandler(unsigned int remote_domain,
     unsigned int remote_port, const char *devname,
     driver_intr_t handler, void *arg, unsigned long irqflags,
@@ -486,7 +486,7 @@ bind_interdomain_evtchn_to_irqhandler(unsigned int remote_domain,
 	return (0);
 }
 
-int 
+int
 bind_virq_to_irqhandler(unsigned int virq, unsigned int cpu,
     const char *devname, driver_filter_t filter, driver_intr_t handler,
     void *arg, unsigned long irqflags, unsigned int *irqp)
@@ -511,7 +511,7 @@ bind_virq_to_irqhandler(unsigned int virq, unsigned int cpu,
 	return (0);
 }
 
-int 
+int
 bind_ipi_to_irqhandler(unsigned int ipi, unsigned int cpu,
     const char *devname, driver_filter_t filter,
     unsigned long irqflags, unsigned int *irqp)
@@ -519,7 +519,7 @@ bind_ipi_to_irqhandler(unsigned int ipi, unsigned int cpu,
 	unsigned int irq;
 	int port = -1;
 	int error;
-	
+
 	irq = bind_ipi_to_irq(ipi, cpu, &port);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
 	error = intr_add_handler(devname, irq, filter, NULL,
@@ -564,7 +564,7 @@ rebind_irq_to_cpu(unsigned irq, unsigned tcpu)
 	bind_vcpu.vcpu = tcpu;
 
 	/*
-	 * If this fails, it usually just indicates that we're dealing with a 
+	 * If this fails, it usually just indicates that we're dealing with a
 	 * virq or IPI channel, which don't actually need to be rebound. Ignore
 	 * it, but don't do the xenlinux-level rebind in that case.
 	 */
@@ -588,38 +588,38 @@ static void set_affinity_irq(unsigned irq, cpumask_t dest)
 
 
 /*------------ interrupt handling --------------------------------------*/
-#define TODO            printf("%s: not implemented!\n", __func__) 
+#define TODO            printf("%s: not implemented!\n", __func__)
 
 
-static void     xenpic_dynirq_enable_source(struct intsrc *isrc); 
-static void     xenpic_dynirq_disable_source(struct intsrc *isrc, int); 
-static void     xenpic_dynirq_eoi_source(struct intsrc *isrc); 
-static void     xenpic_dynirq_enable_intr(struct intsrc *isrc); 
-static void     xenpic_dynirq_disable_intr(struct intsrc *isrc); 
+static void     xenpic_dynirq_enable_source(struct intsrc *isrc);
+static void     xenpic_dynirq_disable_source(struct intsrc *isrc, int);
+static void     xenpic_dynirq_eoi_source(struct intsrc *isrc);
+static void     xenpic_dynirq_enable_intr(struct intsrc *isrc);
+static void     xenpic_dynirq_disable_intr(struct intsrc *isrc);
 
-static void     xenpic_pirq_enable_source(struct intsrc *isrc); 
-static void     xenpic_pirq_disable_source(struct intsrc *isrc, int); 
-static void     xenpic_pirq_eoi_source(struct intsrc *isrc); 
-static void     xenpic_pirq_enable_intr(struct intsrc *isrc); 
+static void     xenpic_pirq_enable_source(struct intsrc *isrc);
+static void     xenpic_pirq_disable_source(struct intsrc *isrc, int);
+static void     xenpic_pirq_eoi_source(struct intsrc *isrc);
+static void     xenpic_pirq_enable_intr(struct intsrc *isrc);
 
 
-static int      xenpic_vector(struct intsrc *isrc); 
-static int      xenpic_source_pending(struct intsrc *isrc); 
-static void     xenpic_suspend(struct pic* pic); 
-static void     xenpic_resume(struct pic* pic); 
+static int      xenpic_vector(struct intsrc *isrc);
+static int      xenpic_source_pending(struct intsrc *isrc);
+static void     xenpic_suspend(struct pic* pic);
+static void     xenpic_resume(struct pic* pic);
 static int      xenpic_assign_cpu(struct intsrc *, u_int apic_id);
 
 
-struct pic xenpic_dynirq_template  =  { 
-	.pic_enable_source	=	xenpic_dynirq_enable_source, 
+struct pic xenpic_dynirq_template  =  {
+	.pic_enable_source	=	xenpic_dynirq_enable_source,
 	.pic_disable_source	=	xenpic_dynirq_disable_source,
-	.pic_eoi_source		=	xenpic_dynirq_eoi_source, 
-	.pic_enable_intr	=	xenpic_dynirq_enable_intr, 
+	.pic_eoi_source		=	xenpic_dynirq_eoi_source,
+	.pic_enable_intr	=	xenpic_dynirq_enable_intr,
 	.pic_disable_intr	=	xenpic_dynirq_disable_intr,
-	.pic_vector		=	xenpic_vector, 
+	.pic_vector		=	xenpic_vector,
 	.pic_source_pending	=	xenpic_source_pending,
-	.pic_suspend		=	xenpic_suspend, 
-	.pic_resume		=	xenpic_resume 
+	.pic_suspend		=	xenpic_suspend,
+	.pic_resume		=	xenpic_resume
 };
 
 struct pic xenpic_pirq_template  = initialize_with([] (pic& x) {
@@ -636,14 +636,14 @@ struct pic xenpic_pirq_template  = initialize_with([] (pic& x) {
 
 
 
-void 
+void
 xenpic_dynirq_enable_source(struct intsrc *isrc)
 {
 	unsigned int irq;
 	struct xenpic_intsrc *xp;
 
 	xp = (struct xenpic_intsrc *)isrc;
-	
+
 	mtx_lock_spin(&irq_mapping_update_lock);
 	if (xp->xp_masked) {
 		irq = xenpic_vector(isrc);
@@ -653,30 +653,30 @@ xenpic_dynirq_enable_source(struct intsrc *isrc)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_dynirq_disable_source(struct intsrc *isrc, int foo)
 {
 	unsigned int irq;
 	struct xenpic_intsrc *xp;
-	
+
 	xp = (struct xenpic_intsrc *)isrc;
-	
+
 	mtx_lock_spin(&irq_mapping_update_lock);
 	if (!xp->xp_masked) {
 		irq = xenpic_vector(isrc);
 		mask_evtchn(evtchn_from_irq(irq));
 		xp->xp_masked = TRUE;
-	}	
+	}
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_dynirq_enable_intr(struct intsrc *isrc)
 {
 	unsigned int irq;
 	struct xenpic_intsrc *xp;
-	
-	xp = (struct xenpic_intsrc *)isrc;	
+
+	xp = (struct xenpic_intsrc *)isrc;
 	mtx_lock_spin(&irq_mapping_update_lock);
 	xp->xp_masked = 0;
 	irq = xenpic_vector(isrc);
@@ -684,13 +684,13 @@ xenpic_dynirq_enable_intr(struct intsrc *isrc)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_dynirq_disable_intr(struct intsrc *isrc)
 {
 	unsigned int irq;
 	struct xenpic_intsrc *xp;
-	
-	xp = (struct xenpic_intsrc *)isrc;	
+
+	xp = (struct xenpic_intsrc *)isrc;
 	mtx_lock_spin(&irq_mapping_update_lock);
 	irq = xenpic_vector(isrc);
 	mask_evtchn(evtchn_from_irq(irq));
@@ -698,13 +698,13 @@ xenpic_dynirq_disable_intr(struct intsrc *isrc)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_dynirq_eoi_source(struct intsrc *isrc)
 {
 	unsigned int irq;
 	struct xenpic_intsrc *xp;
-	
-	xp = (struct xenpic_intsrc *)isrc;	
+
+	xp = (struct xenpic_intsrc *)isrc;
 	mtx_lock_spin(&irq_mapping_update_lock);
 	xp->xp_masked = 0;
 	irq = xenpic_vector(isrc);
@@ -736,22 +736,22 @@ xenpic_source_pending(struct intsrc *isrc)
 	return 0;
 }
 
-static void 
+static void
 xenpic_suspend(struct pic* pic)
-{ 
-	TODO; 
-} 
- 
-static void 
+{
+	TODO;
+}
+
+static void
 xenpic_resume(struct pic* pic)
-{ 
-	TODO; 
+{
+	TODO;
 }
 
 static int
 xenpic_assign_cpu(struct intsrc *isrc, u_int apic_id)
-{ 
-	TODO; 
+{
+	TODO;
 	return (EOPNOTSUPP);
 }
 
@@ -768,7 +768,7 @@ notify_remote_via_irq(int irq)
 MAKE_SYMBOL(notify_remote_via_evtchn);
 
 /* required for support of physical devices */
-static inline void 
+static inline void
 pirq_unmask_notify(int pirq)
 {
 	struct physdev_eoi eoi = { .irq = pirq };
@@ -778,7 +778,7 @@ pirq_unmask_notify(int pirq)
 	}
 }
 
-static inline void 
+static inline void
 pirq_query_unmask(int pirq)
 {
 	struct physdev_irq_status_query irq_status_query;
@@ -796,13 +796,13 @@ pirq_query_unmask(int pirq)
  */
 #define probing_irq(_irq) (intr_lookup_source(irq) == NULL)
 
-static void 
+static void
 xenpic_pirq_enable_intr(struct intsrc *isrc)
 {
 	struct evtchn_bind_pirq bind_pirq;
 	int evtchn;
 	unsigned int irq;
-	
+
 	mtx_lock_spin(&irq_mapping_update_lock);
 	irq = xenpic_vector(isrc);
 	evtchn = evtchn_from_irq(irq);
@@ -813,7 +813,7 @@ xenpic_pirq_enable_intr(struct intsrc *isrc)
 	bind_pirq.pirq  = irq;
 	/* NB. We are happy to share unless we are probing. */
 	bind_pirq.flags = probing_irq(irq) ? 0 : BIND_PIRQ__WILL_SHARE;
-	
+
 	if (HYPERVISOR_event_channel_op(EVTCHNOP_bind_pirq, &bind_pirq) != 0) {
 #ifndef XEN_PRIVILEGED_GUEST
 		panic("unexpected pirq call");
@@ -837,7 +837,7 @@ xenpic_pirq_enable_intr(struct intsrc *isrc)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_pirq_enable_source(struct intsrc *isrc)
 {
 	int evtchn;
@@ -856,7 +856,7 @@ xenpic_pirq_enable_source(struct intsrc *isrc)
 	mtx_unlock_spin(&irq_mapping_update_lock);
 }
 
-static void 
+static void
 xenpic_pirq_disable_source(struct intsrc *isrc, int eoi)
 {
 	int evtchn;
@@ -875,7 +875,7 @@ xenpic_pirq_disable_source(struct intsrc *isrc, int eoi)
 }
 
 
-static void 
+static void
 xenpic_pirq_eoi_source(struct intsrc *isrc)
 {
 	int evtchn;
@@ -900,14 +900,14 @@ irq_to_evtchn_port(int irq)
 	return evtchn_from_irq(irq);
 }
 
-void 
+void
 mask_evtchn(int port)
 {
 	shared_info_t *s = HYPERVISOR_shared_info;
 	synch_set_bit(port, &s->evtchn_mask[0]);
 }
 
-void 
+void
 unmask_evtchn(int port)
 {
 	shared_info_t *s = HYPERVISOR_shared_info;
@@ -928,7 +928,7 @@ unmask_evtchn(int port)
 	 * like a real IO-APIC we 'lose the interrupt edge' if the channel is
 	 * masked.
 	 */
-	if (synch_test_bit(port, &s->evtchn_pending) && 
+	if (synch_test_bit(port, &s->evtchn_pending) &&
 	    !synch_test_and_set_bit(port / LONG_BIT,
 				    &vcpu_info->evtchn_pending_sel)) {
 		vcpu_info->evtchn_upcall_pending = 1;
@@ -943,7 +943,7 @@ void irq_resume(void)
 	int         cpu, pirq, virq, ipi, irq, evtchn;
 
 	struct evtchn_bind_virq bind_virq;
-	struct evtchn_bind_ipi bind_ipi;	
+	struct evtchn_bind_ipi bind_ipi;
 
 	init_evtchn_cpu_bindings();
 
@@ -958,7 +958,7 @@ void irq_resume(void)
 	}
 
 	/* Secondary CPUs must have no VIRQ or IPI bindings. */
-	for (cpu = 1; cpu < MAX_VIRT_CPUS; cpu++) {
+	for (cpu = 1; cpu < XEN_LEGACY_MAX_VCPUS; cpu++) {
 		for (virq = 0; virq < NR_VIRQS; virq++) {
 			KASSERT(pcpu_find(cpu)->pc_virq_to_irq[virq] == -1,
 			    ("virq_to_irq inconsistent"));
@@ -988,7 +988,7 @@ void irq_resume(void)
 		bind_virq.vcpu = 0;
 		HYPERVISOR_event_channel_op(EVTCHNOP_bind_virq, &bind_virq);
 		evtchn = bind_virq.port;
-        
+
 		/* Record the new mapping. */
 		evtchn_to_irq[evtchn] = irq;
 		irq_info[irq] = mk_irq_info(IRQT_VIRQ, virq, evtchn);
@@ -1010,7 +1010,7 @@ void irq_resume(void)
 		bind_ipi.vcpu = 0;
 		HYPERVISOR_event_channel_op(EVTCHNOP_bind_ipi, &bind_ipi);
 		evtchn = bind_ipi.port;
-        
+
 		/* Record the new mapping. */
 		evtchn_to_irq[evtchn] = irq;
 		irq_info[irq] = mk_irq_info(IRQT_IPI, ipi, evtchn);
@@ -1020,7 +1020,7 @@ void irq_resume(void)
 	}
 }
 
-void 
+void
 evtchn_init(void *dummy __unused)
 {
 	int i, cpu;
@@ -1028,7 +1028,7 @@ evtchn_init(void *dummy __unused)
 
 
 	init_evtchn_cpu_bindings();
-	
+
          /* No VIRQ or IPI bindings. */
 	for (cpu = 0; cpu < mp_ncpus; cpu++) {
 		for (i = 0; i < NR_VIRQS; i++)
@@ -1046,7 +1046,7 @@ evtchn_init(void *dummy __unused)
 	/* No IRQ -> event-channel mappings. */
 	for (i = 0; i < NR_IRQS; i++)
 		irq_info[i] = IRQ_UNBOUND;
-	
+
 	xp = (xenpic *)malloc(sizeof(struct xenpic) + NR_IRQS*sizeof(struct xenpic_intsrc),
 		    M_DEVBUF, M_WAITOK);
 
@@ -1074,7 +1074,7 @@ evtchn_init(void *dummy __unused)
 		tpin = &pin[dynirq_to_irq(i)];
 		tpin->xp_intsrc.is_pic = xp->xp_dynirq_pic;
 		tpin->xp_vector = dynirq_to_irq(i);
-		
+
 	}
 	/*
 	 * Now, we go ahead and claim every PIRQ there is.
@@ -1090,7 +1090,7 @@ evtchn_init(void *dummy __unused)
 		    !(xen_start_info->flags & SIF_INITDOMAIN))
 			continue;
 #endif
-		tpin = &pin[pirq_to_irq(i)];		
+		tpin = &pin[pirq_to_irq(i)];
 		tpin->xp_intsrc.is_pic = xp->xp_pirq_pic;
 		tpin->xp_vector = pirq_to_irq(i);
 
@@ -1098,4 +1098,3 @@ evtchn_init(void *dummy __unused)
 }
 
 SYSINIT(evtchn_init, SI_SUB_INTR, SI_ORDER_MIDDLE, evtchn_init, NULL);
-

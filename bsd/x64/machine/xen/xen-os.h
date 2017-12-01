@@ -1,6 +1,6 @@
 /******************************************************************************
  * os.h
- * 
+ *
  * random collection of macros and definition
  */
 
@@ -11,15 +11,20 @@ __BEGIN_DECLS
 #define CONFIG_X86_PAE
 #endif
 
-#if !defined(__XEN_INTERFACE_VERSION__)  
-/*  
- * Can update to a more recent version when we implement  
- * the hypercall page  
- */  
-#define  __XEN_INTERFACE_VERSION__ 0x00030204  
-#endif  
+#ifdef LOCORE
+#define __ASSEMBLY__
+#endif
+
+#if !defined(__XEN_INTERFACE_VERSION__)
+#define  __XEN_INTERFACE_VERSION__ 0x00030208
+#endif
+
+#define GRANT_REF_INVALID   0xffffffff
 
 #include <xen/interface/xen.h>
+
+/* Everything below this point is not included by assembler (.S) files. */
+#ifndef __ASSEMBLY__
 
 /* Force a proper event-channel callback from Xen. */
 void force_evtchn_callback(void);
@@ -35,15 +40,11 @@ static inline void rep_nop(void)
 }
 #define cpu_relax() rep_nop()
 
-/* crude memory allocator for memory allocation early in 
+/* crude memory allocator for memory allocation early in
  *  boot
  */
 void *bootmem_alloc(unsigned int size);
 void bootmem_free(void *ptr, unsigned int size);
-
-
-/* Everything below this point is not included by assembler (.S) files. */
-#ifndef __ASSEMBLY__
 
 void printk(const char *fmt, ...);
 
@@ -126,17 +127,17 @@ do {                                                                    \
 #else
 #endif
 
-#ifndef mb
-#define mb() __asm__ __volatile__("mfence":::"memory")
+#ifndef xen_mb
+#define xen_mb() __asm__ __volatile("mfence":::"memory")
 #endif
-#ifndef rmb
-#define rmb() __asm__ __volatile__("lfence":::"memory");
+#ifndef xen_rmb
+#define xen_rmb() __asm__ __volatile("lfence":::"memory")
 #endif
-#ifndef wmb
-#define wmb() barrier()
+#ifndef xen_wmb
+#define xen_wmb() barrier()
 #endif
 #ifdef SMP
-#define smp_mb() mb() 
+#define smp_mb() mb()
 #define smp_rmb() rmb()
 #define smp_wmb() wmb()
 #define smp_read_barrier_depends()      read_barrier_depends()
@@ -205,7 +206,7 @@ static __inline unsigned long __xchg(unsigned long x, volatile void * ptr,
  * @nr: Bit to set
  * @addr: Address to count from
  *
- * This operation is atomic and cannot be reordered.  
+ * This operation is atomic and cannot be reordered.
  * It also implies a memory barrier.
  */
 static __inline int test_and_clear_bit(int nr, volatile void * addr)
@@ -227,7 +228,7 @@ static __inline int constant_test_bit(int nr, const volatile void * addr)
 static __inline int variable_test_bit(int nr, volatile void * addr)
 {
     int oldbit;
-    
+
     __asm__ __volatile__(
         "btl %2,%1\n\tsbbl %0,%0"
         :"=r" (oldbit)
@@ -280,10 +281,10 @@ static __inline__ void clear_bit(int nr, volatile void * addr)
 /**
  * atomic_inc - increment atomic variable
  * @v: pointer of type atomic_t
- * 
+ *
  * Atomically increments @v by 1.  Note that the guaranteed
  * useful range of an atomic_t is only 24 bits.
- */ 
+ */
 static __inline__ void atomic_inc(atomic_t *v)
 {
         __asm__ __volatile__(

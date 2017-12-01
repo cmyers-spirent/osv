@@ -1271,7 +1271,7 @@ blkfront_connect(struct xb_softc *sc)
     blkfront_alloc_commands(sc);
 
     if (sc->xb_disk == NULL) {
-        device_printf(dev, "%juMB <%s> at %s",
+        device_printf(dev, "%juMB <%s> at %s ",
             (uintmax_t) sectors / (1048576 / sector_size),
             device_get_desc(dev),
             xenbus_get_node(dev));
@@ -1671,7 +1671,7 @@ blkif_queue_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
     cm = (xb_command *)arg;
     sc = cm->cm_sc;
 
-//printf("%s: Start\n", __func__);
+    //printf("%s: Start\n", __func__);
     if (error) {
         printf("error %d in blkif_queue_cb\n", error);
         cm->bp->bio_error = EIO;
@@ -1706,7 +1706,7 @@ blkif_queue_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
     if (cm->cm_flags & XB_CMD_FROZEN)
         flush_requests(sc);
 
-//printf("%s: Done\n", __func__);
+    //printf("%s: Done\n", __func__);
     return;
 }
 
@@ -1780,7 +1780,7 @@ blkif_int(void *_xsc)
 
  again:
     rp = sc->ring.sring->rsp_prod;
-    rmb(); /* Ensure we see queued responses up to 'rp'. */
+    xen_rmb(); /* Ensure we see queued responses up to 'rp'. */
 
     for (i = sc->ring.rsp_cons; i != rp;) {
         bret = RING_GET_RESPONSE(&sc->ring, i);
@@ -1903,7 +1903,7 @@ blkif_free(struct xb_softc *sc)
 static int
 blkif_completion(struct xb_command *s)
 {
-//printf("%s: Req %p(%d)\n", __func__, s, s->nseg);
+    //printf("%s: Req %p(%d)\n", __func__, s, s->nseg);
     gnttab_end_foreign_access_references(s->nseg, s->sg_refs);
     if (s->ind_descr) {
         s->ind_descr->unmap();
