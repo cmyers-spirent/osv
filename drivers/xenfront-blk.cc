@@ -11,8 +11,8 @@
 #include <bsd/sys/geom/geom_disk.h>
 #include <osv/bio.h>
 
-struct xb_softc;
-struct device *blkfront_from_softc(struct xb_softc *s);
+struct xbd_softc;
+struct device *xbd_from_softc(struct xbd_softc *s);
 
 struct xenfront_blk_priv {
     devop_strategy_t strategy;
@@ -49,11 +49,11 @@ struct driver xenfront_blk_driver = {
 
 void disk_create(struct disk *dp, int version)
 {
-    struct xb_softc *sc = static_cast<struct xb_softc *>(dp->d_drv1);
-    struct device *dev = blkfront_from_softc(sc);
+    struct xbd_softc *sc = static_cast<struct xbd_softc *>(dp->d_drv1);
+    struct device *dev = xbd_from_softc(sc);
     xenfront::xenfront_driver *blkfront = xenfront::xenfront_driver::from_device(dev);
 
-    std::stringstream name; 
+    std::stringstream name;
     name << blkfront->get_name();
     name << dp->d_unit;
 
