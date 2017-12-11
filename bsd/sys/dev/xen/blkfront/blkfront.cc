@@ -102,6 +102,12 @@ static void xbd_startio(struct xbd_softc *sc);
 /*---------------------------- Global Static Data ----------------------------*/
 MALLOC_DEFINE(M_XENBLOCKFRONT, "xbd", "Xen Block Front driver data");
 
+/*
+ * Variable to control whether indirect pages are used.  Since this currently causes
+ * page faults, let's leave this disabled for now.
+ */
+static int xbd_enable_indirect = 0;
+
 /*------------------------ OSv specific C++ code & objects -------------------*/
 static unsigned int
 xbd_read_feature(device_t dev, char *name)
@@ -1599,7 +1605,7 @@ xbd_connect(struct xbd_softc *sc)
     device_t dev = sc->xbd_dev;
     unsigned long sectors, sector_size;
     unsigned int binfo;
-    int err, feature_barrier, feature_flush;
+    int err;
     bf_softc *xsc = reinterpret_cast<bf_softc *>(sc);
 
     if( (sc->xbd_state == XBD_STATE_CONNECTED) ||
@@ -1624,9 +1630,9 @@ xbd_connect(struct xbd_softc *sc)
     sc->xbd_flags |= xbd_check_feature(dev, "feature-flush-cache", XBDF_FLUSH);
 
     err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
-                    "feature-max-indirect-segments", "%", PRIu32,
+                    "feature-max-indirect-segments", "%" PRIu32,
                     &sc->xbd_max_request_segments, NULL);
-    if (err != 0)
+    if ((err != 0) || (xbd_enable_indirect == 0))
         sc->xbd_max_request_segments = 0;
     if (sc->xbd_max_request_segments > XBD_MAX_INDIRECT_SEGMENTS)
         sc->xbd_max_request_segments = XBD_MAX_INDIRECT_SEGMENTS;
@@ -1649,18 +1655,6 @@ xbd_connect(struct xbd_softc *sc)
     sc->xbd_max_request_size = XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments);
 
     xbd_alloc_commands(sc);
-
-    err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
-                    "feature-barrier", "%lu", &feature_barrier,
-                    NULL);
-    if (err == 0 && feature_barrier != 0)
-        sc->xbd_flags |= XBDF_BARRIER;
-
-    err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
-                    "feature-flush-cache", "%lu", &feature_flush,
-                    NULL);
-    if (err == 0 && feature_flush != 0)
-        sc->xbd_flags |= XBDF_FLUSH;
 
     if (sc->xbd_disk == NULL) {
         device_printf(dev, "%juMB <%s> at %s ",
