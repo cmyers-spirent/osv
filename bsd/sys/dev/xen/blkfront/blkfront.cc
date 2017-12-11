@@ -91,7 +91,7 @@ static void xbd_closing(device_t);
 static void xbd_startio(struct xbd_softc *sc);
 
 /*---------------------------------- Macros ----------------------------------*/
-#if 1
+#if 0
 #define DPRINTK(fmt, args...) printf("[XEN] %s:%d: " fmt ".\n", __func__, __LINE__, ##args)
 #else
 #define DPRINTK(fmt, args...)
@@ -1648,10 +1648,6 @@ xbd_connect(struct xbd_softc *sc)
                                     : BLKIF_MAX_SEGMENTS_PER_REQUEST);
     sc->xbd_max_request_size = XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments);
 
-    printf("size = %u, requests = %u, semments = %u\n",
-           sc->xbd_max_request_size,
-           sc->xbd_max_requests,
-           sc->xbd_max_request_segments);
     xbd_alloc_commands(sc);
 
     err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),

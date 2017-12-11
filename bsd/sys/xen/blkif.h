@@ -1,4 +1,4 @@
-/* 
+/*
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
  * deal in the Software without restriction, including without limitation the
@@ -46,7 +46,7 @@ struct blkif_x86_32_request {
 	blkif_vdev_t   handle;       /* only for read/write requests         */
 	uint64_t       id;           /* private guest value, echoed in resp  */
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
-	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK];
+	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 };
 struct blkif_x86_32_response {
 	uint64_t        id;              /* copied from request */
@@ -64,7 +64,7 @@ struct blkif_x86_64_request {
 	blkif_vdev_t   handle;       /* only for read/write requests         */
 	uint64_t       __attribute__((__aligned__(8))) id;
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
-	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK];
+	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 };
 struct blkif_x86_64_response {
 	uint64_t       __attribute__((__aligned__(8))) id;
@@ -87,8 +87,7 @@ DEFINE_RING_TYPES(blkif_x86_64, struct blkif_x86_64_request, struct blkif_x86_64
 #define BLKIF_MAX_RING_REQUESTS(_sz) \
 	MAX(__RING_SIZE((blkif_x86_64_sring_t *)NULL, _sz),	\
 	    MAX(__RING_SIZE((blkif_x86_32_sring_t *)NULL, _sz),	\
-            MIN(__RING_SIZE((blkif_indirect_sring_t *)NULL, _sz), \
-                __RING_SIZE((blkif_sring_t *)NULL, _sz))))
+                __RING_SIZE((blkif_sring_t *)NULL, _sz)))
 
 /*
  * The number of ring pages required to support a given number of requests
@@ -115,7 +114,7 @@ enum blkif_protocol {
 
 static void inline blkif_get_x86_32_req(blkif_request_t *dst, blkif_x86_32_request_t *src)
 {
-	int i, n = BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK;
+	int i, n = BLKIF_MAX_SEGMENTS_PER_REQUEST;
 	dst->operation = src->operation;
 	dst->nr_segments = src->nr_segments;
 	dst->handle = src->handle;
@@ -130,7 +129,7 @@ static void inline blkif_get_x86_32_req(blkif_request_t *dst, blkif_x86_32_reque
 
 static void inline blkif_get_x86_64_req(blkif_request_t *dst, blkif_x86_64_request_t *src)
 {
-	int i, n = BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK;
+	int i, n = BLKIF_MAX_SEGMENTS_PER_REQUEST;
 	dst->operation = src->operation;
 	dst->nr_segments = src->nr_segments;
 	dst->handle = src->handle;
