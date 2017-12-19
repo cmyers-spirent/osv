@@ -418,7 +418,10 @@ xbd_put_segments(DescrT &descr,
     while (descr.has_space() && nsegs != 0) {
         auto buffer_ma = segs->ds_addr;
         uint8_t fsect = (buffer_ma & PAGE_MASK) >> XBD_SECTOR_SHFT;
-        uint8_t lsect = fsect + (segs->ds_len  >> XBD_SECTOR_SHFT) - 1;
+        // ds_len could be less than a sector size, so use a minimum of 1
+        // to prevent rolling back to the previous page.
+        uint8_t lsect = fsect + std::max(static_cast<bus_size_t>(1),
+                                         (segs->ds_len  >> XBD_SECTOR_SHFT)) - 1;
 
         KASSERT(lsect <= 7, ("XEN disk driver data cannot "
             "cross a page boundary"));
