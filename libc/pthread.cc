@@ -936,15 +936,27 @@ int sched_get_priority_min(int policy)
 int pthread_setschedparam(pthread_t thread, int policy,
         const struct sched_param *param)
 {
-    WARN_STUBBED();
-    return EINVAL;
+    if (policy != SCHED_RR) {
+        return ENOTSUP;
+    }
+
+    if (param->sched_priority <= 0) {
+        return EINVAL;
+    }
+
+    // In Linux, higher value means higher priority.  Under OSv, higher value means
+    // lower priority, so use the inverse of the user's priority to set the priority
+    // on the thread.  The default is 1.
+    pthread::from_libc(thread)->_thread->set_priority(1.0 / param->sched_priority);
+    return 0;
 }
 
 int pthread_getschedparam(pthread_t thread, int *policy,
         struct sched_param *param)
 {
-    WARN_STUBBED();
-    return EINVAL;
+    *policy = SCHED_RR;
+    param->sched_priority = pthread::from_libc(thread)->_thread->priority();
+    return 0;
 }
 
 int pthread_kill(pthread_t thread, int sig)
