@@ -16,6 +16,7 @@
 #include <stack>
 #include <vector>
 #include <tuple>
+#include <queue>
 
 #define MAX_BPAGES 512
 
@@ -23,17 +24,44 @@
 #define PAGE_MASK (PAGE_SIZE - 1)
 #endif
 
-TRACEPOINT(trace_bus_dmamap_load_enter, "tag = %p, map = %p, buf = %p, length = %u",
-           void *, void *, void *, size_t);
-TRACEPOINT(trace_bus_dmamap_load_segment, "tag = %p, map = %p, segment = %x, size = %u",
+TRACEPOINT(trace_bus_dmamap_load_page_info, "tag=%p, map=%p, needed=%u, available=%u",
            void *, void *, size_t, size_t);
-TRACEPOINT(trace_bus_dmamap_load_page_info, "tag = %p, map = %p, needed = %u, available = %u",
+TRACEPOINT(trace_bus_dmamap_load_segment, "tag=%p, map=%p, segment=%x, size=%u",
            void *, void *, size_t, size_t);
 
-TRACEPOINT(trace_bus_dmamap_unload, "tag = %p, map = %p, bpages = %u", void *, void *, size_t);
+TRACEPOINT(trace_bus_dmamap_unload, "tag=%p, map=%p, bpages=%u", void *, void *, size_t);
 
-TRACEPOINT(trace_bus_dmamap_bpage_pop, "tag = %p, page = %x, size = %u", void *, size_t, size_t);
-TRACEPOINT(trace_bus_dmamap_bpage_push, "tag = %p, page = %x, size = %u", void *, size_t, size_t);
+TRACEPOINT(trace_bus_dmamap_bpage_pop, " tag=%p, page=%x, size=%u", void *, size_t, size_t);
+TRACEPOINT(trace_bus_dmamap_bpage_push, "tag=%p, page=%x, size=%u", void *, size_t, size_t);
+
+TRACEPOINT(trace_bus_dmamap_queue_pop, " buf=%p, length=%u, pages: need %u, have %u",
+           void *, size_t, size_t, size_t);
+TRACEPOINT(trace_bus_dmamap_queue_push, "buf=%p, length=%u, pages: need %u, have %u",
+           void *, size_t, size_t, size_t);
+
+struct dmamap_args {
+	dmamap_args(bus_size_t _bpages_needed, bus_dmamap_t _map, void * _buf,
+		    bus_size_t _buflen, bus_dmamap_callback_t *_callback,
+		    void *_callback_arg, int _flags)
+		: bpages_needed(_bpages_needed)
+		, map(_map)
+		, buf(_buf)
+		, buflen(_buflen)
+		, callback(_callback)
+		, callback_arg(_callback_arg)
+		, flags(_flags)
+	{}
+
+	~dmamap_args() {};
+
+	bus_size_t bpages_needed;
+	bus_dmamap_t map;
+	void *buf;
+	bus_size_t buflen;
+	bus_dmamap_callback_t *callback;
+	void *callback_arg;
+	int flags;
+};
 
 struct bus_dma_tag {
 	bus_size_t	  alignment;
@@ -46,6 +74,7 @@ struct bus_dma_tag {
 	bus_dma_segment_t *segments;
 	/* The bpages stack is protected by the lockfunc/lockfuncarg above */
 	std::stack<vm_offset_t, std::vector<vm_offset_t>> bpages;
+	std::queue<dmamap_args *> bounce_map_queue;
 };
 
 typedef std::tuple<vm_offset_t, vm_offset_t, bus_size_t> bounce_page_t;
@@ -75,6 +104,12 @@ busdma_lock_mutex(void *arg, bus_dma_lock_op_t op)
 	default:
 		panic("Unknown operation 0x%x for busdma_lock_mutex!", op);
 	}
+}
+
+static inline void _bus_dma_lock_assert(void *arg)
+{
+        mutex_t *dmtx = static_cast<mutex_t *>(arg);
+        assert(mutex_owned(dmtx));
 }
 
 static inline vm_offset_t _get_bounce_page(bus_dma_tag_t dmat)
@@ -121,6 +156,11 @@ bus_dma_tag_destroy(bus_dma_tag_t dmat)
 		}
 		while (!dmat->bpages.empty()) {
 			memory::free_page(reinterpret_cast<void *>(_get_bounce_page(dmat)));
+		}
+		while (!dmat->bounce_map_queue.empty()) {
+			auto args = dmat->bounce_map_queue.front();
+			dmat->bounce_map_queue.pop();
+			delete args;
 		}
 		free(dmat);
 	}
@@ -208,15 +248,25 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	unsigned int nsegs = 0;
 	auto vaddr = reinterpret_cast<vm_offset_t>(buf);
 
-	trace_bus_dmamap_load_enter(dmat, map, buf, buflen);
-
-	dmat->lockfunc(dmat->lockfuncarg, BUS_DMA_LOCK);
+	/*
+	 * XXX: Our only current client calls this function with the lock
+	 * held, however this isn't the intended behavior.  Alert developers
+	 * if this behavior changes.
+	 */
+	_bus_dma_lock_assert(dmat->lockfuncarg);
 
 	/* See if we need to use bounce pages */
 	auto nb_bpages = _bus_dmamap_count_pages(dmat, vaddr, buflen);
 	trace_bus_dmamap_load_page_info(dmat, map, nb_bpages, dmat->bpages.size());
 	if (nb_bpages && nb_bpages > dmat->bpages.size()) {
-		dmat->lockfunc(dmat->lockfuncarg, BUS_DMA_UNLOCK);
+		/* no pages available right now; defer till later */
+		dmamap_args *args = new struct dmamap_args(nb_bpages, map, buf,
+							   buflen, callback,
+							   callback_arg, flags);
+		if (args == nullptr)
+			return ENOMEM;
+		trace_bus_dmamap_queue_push(buf, buflen, nb_bpages, dmat->bpages.size());
+		dmat->bounce_map_queue.push(args);
 		return EINPROGRESS;
 	}
 
@@ -250,7 +300,6 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 		}
 	}
 	assert(nsegs <= dmat->nsegments);
-	dmat->lockfunc(dmat->lockfuncarg, BUS_DMA_UNLOCK);
 
 	(*callback)(callback_arg, dmat->segments, nsegs, 0);
 	return 0;
@@ -259,15 +308,40 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 void
 _bus_dmamap_unload(bus_dma_tag_t dmat, bus_dmamap_t map)
 {
+	/*
+	 * XXX: Our only current client calls this function with the lock
+	 * held, however this isn't the intended behavior.  Alert developers
+	 * if this behavior changes.
+	 */
+	_bus_dma_lock_assert(dmat->lockfuncarg);
+
 	trace_bus_dmamap_unload(dmat, map, map->bpages.size());
-	dmat->lockfunc(dmat->lockfuncarg, BUS_DMA_LOCK);
+
 	for (auto &bpage : map->bpages) {
 		dmat->bpages.push(std::get<BOUNCE_BUFFER>(bpage));
 		trace_bus_dmamap_bpage_push(dmat, std::get<BOUNCE_BUFFER>(bpage),
 					    dmat->bpages.size());
 	}
-	dmat->lockfunc(dmat->lockfuncarg, BUS_DMA_UNLOCK);
 	map->bpages.clear();
+
+	/* Check if we have enough free pages now to handle deferred requests */
+	while (!dmat->bounce_map_queue.empty()) {
+		auto args = dmat->bounce_map_queue.front();
+		if (args->bpages_needed <= dmat->bpages.size()) {
+			/* we have enough pages */
+			trace_bus_dmamap_queue_pop(args->buf, args->buflen,
+						   args->bpages_needed,
+						   dmat->bpages.size());
+			dmat->bounce_map_queue.pop();
+			int error = bus_dmamap_load(dmat, args->map, args->buf,
+						    args->buflen, args->callback,
+						    args->callback_arg, args->flags);
+			assert(error == 0);
+			delete args;
+		} else {
+			break;
+		}
+	}
 }
 
 void
