@@ -939,8 +939,8 @@ uintptr_t find_hole(uintptr_t start, uintptr_t size)
     bool small = size < huge_page_size;
     uintptr_t good_enough = 0;
 
-    // FIXME: use lower_bound or something
-    auto p = vma_list.begin();
+    auto p = vma_list.lower_bound(start, addr_compare());
+    p = p == vma_list.begin() ? p : std::prev(p);
     auto n = std::next(p);
     while (n != vma_list.end()) {
         if (start >= p->end() && start + size <= n->start()) {
