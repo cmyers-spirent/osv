@@ -22,13 +22,14 @@ standard_ec2_post_install = ['pip install awscli &&'
 
 class Fedora(object):
     name = 'Fedora'
-    install = 'yum -y install'
+    install = 'yum -y install --allowerasing'
     packages = ['gcc-c++', 'gcc-c++-aarch64-linux-gnu', 'git', 'gdb', 'qemu-img',
                 'qemu-system-x86', 'libvirt', 'maven',
                 'ant', 'autoconf', 'automake', 'boost-static', 'genromfs', 'libtool',
                 'flex', 'bison', 'maven-shade-plugin', 'python-dpkt', 'tcpdump', 'gdb',
                 'gnutls-utils', 'openssl', 'p11-kit', 'patch', 'wget',
                 'unzip', 'ncurses', 'ncurses-devel', 'libstdc++-static', 'openssl-libs',
+
                 'libedit-devel', 'yaml-cpp-devel'
                 ]
     ec2_packages = standard_ec2_packages
@@ -91,7 +92,14 @@ class Fedora(object):
         ec2_post_install = None
         version = '26'
 
-    versions = [Fedora_19, Fedora_20, Fedora_21, Fedora_22, Fedora_23, Fedora_24, Fedora_25, Fedora_26]
+    class Fedora_27(object):
+        packages = ['java-1.8.0-openjdk', 'python2-requests', 'compat-openssl10-devel']
+        ec2_packages = []
+        test_packages = []
+        ec2_post_install = None
+        version = '27'
+
+    versions = [Fedora_19, Fedora_20, Fedora_21, Fedora_22, Fedora_23, Fedora_24, Fedora_25, Fedora_26, Fedora_27]
 
 class RHELbased(Fedora):
     name = ['Scientific Linux', 'NauLinux', 'CentOS Linux',
@@ -157,7 +165,7 @@ class Ubuntu(object):
                 'libmaven-shade-plugin-java', 'python-dpkt', 'tcpdump', 'gdb', 'qemu-system-x86',
                 'gawk', 'gnutls-bin', 'openssl', 'python-requests', 'p11-kit', 'g++-multilib',
                 'libssl-dev', 'libedit-dev', 'curl', 'libvirt-bin',
-                'libncurses5-dev', 'libyaml-cpp-dev'
+                'libncurses5-dev', 'libyaml-cpp-dev', 'unzip'
                 ]
     ec2_packages = standard_ec2_packages
     test_packages = ['libssl-dev', 'zip']
