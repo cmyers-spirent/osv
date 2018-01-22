@@ -1932,6 +1932,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			tp->rcv_scale = tp->request_r_scale;
 			tp->snd_wnd = tiwin;
 		}
+		tp->snd_una++;	/* Acknowledge ACK of SYN */
+
 		/*
 		 * Make transitions:
 		 *      SYN-RECEIVED  -> ESTABLISHED
