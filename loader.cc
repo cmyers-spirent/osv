@@ -84,7 +84,10 @@ void setup_tls(elf::init_table inittab)
 extern "C" {
     void premain();
     void vfs_init(void);
+    void unmount_devfs();
     void mount_zfs_rootfs(bool);
+    int mount_rofs_rootfs(bool);
+    void rofs_disable_cache();
 }
 
 void premain()
@@ -106,7 +109,7 @@ void premain()
     }
 
     setup_tls(inittab);
-    boot_time.event("TLS initialization");
+    boot_time.event(3,"TLS initialization");
     for (auto init = inittab.start; init < inittab.start + inittab.count; ++init) {
         (*init)();
     }
@@ -120,6 +123,7 @@ int main(int loader_argc, char **loader_argv)
     sched::init([=] { main_cont(loader_argc, loader_argv); });
 }
 
+static bool opt_disable_rofs_cache = false;
 static bool opt_leak = false;
 static bool opt_noshutdown = false;
 bool opt_power_off_on_abort = false;
@@ -165,7 +169,7 @@ void parse_options(int loader_argc, char** loader_argv)
         ("maxnic", bpo::value<int>(), "maximum NIC number")
         ("norandom", "don't initialize any random device")
         ("noshutdown", "continue running after main() returns")
-	("power-off-on-abort", "use poweroff instead of halt if it's aborted")
+        ("power-off-on-abort", "use poweroff instead of halt if it's aborted")
         ("noinit", "don't run commands from /init")
         ("verbose", "be verbose, print debug messages")
         ("console", bpo::value<std::vector<std::string>>(), "select console driver")
@@ -177,6 +181,7 @@ void parse_options(int loader_argc, char** loader_argv)
         ("nameserver", bpo::value<std::string>(), "set nameserver address")
         ("delay", bpo::value<float>()->default_value(0), "delay in seconds before boot")
         ("redirect", bpo::value<std::string>(), "redirect stdout and stderr to file")
+        ("disable_rofs_cache", "disable ROFS memory cache")
     ;
     bpo::variables_map vars;
     // don't allow --foo bar (require --foo=bar) so we can find the first non-option
@@ -197,6 +202,10 @@ void parse_options(int loader_argc, char** loader_argv)
 
     if (vars.count("leak")) {
         opt_leak = true;
+    }
+
+    if (vars.count("disable_rofs_cache")) {
+        opt_disable_rofs_cache = true;
     }
 
     if (vars.count("noshutdown")) {
@@ -335,11 +344,26 @@ void* do_main_thread(void *_main_args)
     boot_time.event("drivers loaded");
 
     if (opt_mount) {
-        zfsdev::zfsdev_init();
-        mount_zfs_rootfs(opt_pivot);
-        bsd_shrinker_init();
+        unmount_devfs();
+        //
+        // Try to mount rofs
+        if(mount_rofs_rootfs(opt_pivot) != 0) {
+            //
+            // Failed -> try to mount zfs
+            zfsdev::zfsdev_init();
+            mount_zfs_rootfs(opt_pivot);
+            bsd_shrinker_init();
+
+            boot_time.event("ZFS mounted");
+        }
+        else {
+            if(opt_disable_rofs_cache) {
+                debug("Disabling ROFS memory cache.\n");
+                rofs_disable_cache();
+            }
+            boot_time.event("ROFS mounted");
+        }
     }
-    boot_time.event("ZFS mounted");
 
     bool has_if = false;
     osv::for_each_if([&has_if] (std::string if_name) {

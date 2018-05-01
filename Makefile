@@ -1388,6 +1388,7 @@ musl += network/getservbyport.o
 libc += network/getifaddrs.o
 libc += network/if_nameindex.o
 musl += network/if_freenameindex.o
+libc += network/res_init.o
 
 musl += prng/rand.o
 musl += prng/rand_r.o
@@ -1747,6 +1748,7 @@ musl += crypt/crypt_md5.o
 musl += crypt/crypt_r.o
 musl += crypt/crypt_sha256.o
 musl += crypt/crypt_sha512.o
+libc += crypt/encrypt.o
 
 objects += core/posix-aio.o
 
@@ -1779,6 +1781,11 @@ fs_objs += devfs/devfs_vnops.o \
 	devfs/device.o
 
 fs_objs += devfs/device_ioctl.o
+
+fs_objs += rofs/rofs_vfsops.o \
+	rofs/rofs_vnops.o \
+	rofs/rofs_cache.o \
+	rofs/rofs_common.o
 
 fs_objs += procfs/procfs_vnops.o
 
@@ -1884,6 +1891,11 @@ $(out)/libenviron.so: $(environ_sources)
 	$(makedir)
 	 $(call quiet, $(CC) $(CFLAGS) -shared -o $(out)/libenviron.so $(environ_sources), CC libenviron.so)
 
+$(out)/libvdso.so: libc/vdso/vdso.c
+	$(makedir)
+	$(call quiet, $(CC) $(CFLAGS) -c -fPIC -o $(out)/libvdso.o libc/vdso/vdso.c, CC libvdso.o)
+	$(call quiet, $(LD) -shared -fPIC -o $(out)/libvdso.so $(out)/libvdso.o --version-script=libc/vdso/vdso.version, LINK libvdso.so)
+
 bootfs_manifest ?= bootfs.manifest.skel
 
 # If parameter "bootfs_manifest" has been changed since the last make,
@@ -1896,7 +1908,7 @@ $(bootfs_manifest_dep): phony
 	fi
 
 $(out)/bootfs.bin: scripts/mkbootfs.py $(bootfs_manifest) $(bootfs_manifest_dep) $(tools:%=$(out)/%) \
-		$(out)/zpool.so $(out)/zfs.so $(out)/libenviron.so
+		$(out)/zpool.so $(out)/zfs.so $(out)/libenviron.so $(out)/libvdso.so
 	$(call quiet, olddir=`pwd`; cd $(out); $$olddir/scripts/mkbootfs.py -o bootfs.bin -d bootfs.bin.d -m $$olddir/$(bootfs_manifest) \
 		-D jdkbase=$(jdkbase) -D gccbase=$(gccbase) -D \
 		glibcbase=$(glibcbase) -D miscbase=$(miscbase), MKBOOTFS $@)
