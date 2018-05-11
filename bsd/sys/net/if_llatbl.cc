@@ -40,9 +40,9 @@
 #include <bsd/sys/net/route.h>
 #include <bsd/sys/net/vnet.h>
 #include <bsd/sys/netinet/if_ether.h>
-#if 0
-#include <netinet6/in6_var.h>
-#include <netinet6/nd6.h>
+#ifdef INET6
+#include <bsd/sys/netinet6/in6_var.h>
+#include <bsd/sys/netinet6/nd6.h>
 #endif
 
 MALLOC_DEFINE(M_LLTABLE, "lltable", "link level address tables");

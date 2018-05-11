@@ -17,6 +17,14 @@
 #include <bsd/sys/net/route.h>
 #include <bsd/sys/netinet/in.h>
 #include <bsd/sys/netinet/in_var.h>
+#ifdef INET6
+#include <bsd/sys/netinet6/in6.h>
+#include <bsd/sys/netinet6/in6_var.h>
+#include <bsd/sys/netinet6/nd6.h>
+
+// FIXME: inet_pton() is from musl which uses different AF_INET6
+#define LINUX_AF_INET6 10
+#endif // INET6
 #include <bsd/sys/sys/socket.h>
 #include <bsd/sys/sys/socketvar.h>
 
@@ -154,6 +162,104 @@ out:
     if_rele(ifp);
     return (error);
 }
+
+#ifdef INET6
+
+int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
+{
+    int error, success;
+    struct in6_ifreq oldaddr;
+    struct in6_aliasreq ifra;
+    struct bsd_sockaddr_in6* addr      = &ifra.ifra_addr;
+    struct bsd_sockaddr_in6* mask      = &ifra.ifra_prefixmask;
+    //struct bsd_sockaddr_in6* dst       = &ifra.ifra_dstaddr;
+    struct ifnet* ifp;
+
+    if ((if_name.empty()) || (ip_addr.empty()) || (prefix_len < 0 || prefix_len > 128)) {
+        return (EINVAL);
+    }
+
+    bzero(&ifra, sizeof(struct in6_aliasreq));
+    ifra.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
+    ifra.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;
+
+    /* IF Name */
+    strncpy(ifra.ifra_name, if_name.c_str(), IFNAMSIZ);
+    ifp = ifunit_ref(if_name.c_str());
+    if (!ifp) {
+        return (ENOENT);
+    }
+
+    /* IP Address */
+    if ((success = inet_pton(LINUX_AF_INET6, ip_addr.c_str(), &addr->sin6_addr)) != 1) {
+        bsd_log(ERR, "Failed converting IPv6 address %s\n", ip_addr.c_str());
+        error = EINVAL;
+        goto out;
+    }
+    addr->sin6_family = AF_INET6;
+    addr->sin6_len = sizeof(struct bsd_sockaddr_in6);
+
+    /* Mask */
+    in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    mask->sin6_family = AF_INET6;
+    mask->sin6_len = sizeof(struct bsd_sockaddr_in6);
+
+    strncpy(oldaddr.ifr_name, if_name.c_str(), IFNAMSIZ);
+    error = in6_control(NULL, SIOCGIFADDR_IN6, (caddr_t)&oldaddr, ifp, NULL);
+    if (!error) {
+        in6_control(NULL, SIOCDIFADDR_IN6, (caddr_t)&oldaddr, ifp, NULL);
+    }
+    error = in6_control(NULL, SIOCAIFADDR_IN6, (caddr_t)&ifra, ifp, NULL);
+
+out:
+    if_rele(ifp);
+    return (error);
+}
+
+int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
+{
+    int error, success;
+    struct in6_aliasreq ifra;
+    struct bsd_sockaddr_in6* addr      = &ifra.ifra_addr;
+    struct bsd_sockaddr_in6* mask      = &ifra.ifra_prefixmask;
+    struct ifnet* ifp;
+
+    if ((if_name.empty()) || (ip_addr.empty()) || (prefix_len < 0 || prefix_len > 128)) {
+        return (EINVAL);
+    }
+
+    bzero(&ifra, sizeof(struct in6_aliasreq));
+
+    /* IF Name */
+    strncpy(ifra.ifra_name, if_name.c_str(), IFNAMSIZ);
+    ifp = ifunit_ref(if_name.c_str());
+    if (!ifp) {
+        return (ENOENT);
+    }
+
+    /* IP Address */
+    if ((success = inet_pton(LINUX_AF_INET6, ip_addr.c_str(), &addr->sin6_addr)) != 1) {
+        bsd_log(ERR, "Failed converting IPv6 address %s\n", ip_addr.c_str());
+        error = EINVAL;
+        goto out;
+    }
+    addr->sin6_family = AF_INET6;
+    addr->sin6_len = sizeof(struct bsd_sockaddr_in6);
+
+    /* Mask */
+    in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    mask->sin6_family = AF_INET6;
+    mask->sin6_len = sizeof(struct bsd_sockaddr_in6);
+
+    error = in6_control(NULL, SIOCDIFADDR_IN6, (caddr_t)&ifra, ifp, NULL);
+
+out:
+    if_rele(ifp);
+    return (error);
+}
+
+#endif // INET6
+
 
 int ifup(std::string if_name)
 {

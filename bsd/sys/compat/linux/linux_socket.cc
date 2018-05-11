@@ -187,8 +187,8 @@ linux_getsockaddr(struct bsd_sockaddr **sap, const struct bsd_osockaddr *osa, in
 			     !IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))) {
 				sin6->sin6_scope_id = 0;
 			} else {
-				log(LOG_DEBUG,
-				    "obsolete pre-RFC2553 bsd_sockaddr_in6 rejected\n");
+				bsd_log(LOG_DEBUG,
+					"obsolete pre-RFC2553 bsd_sockaddr_in6 rejected\n");
 				error = EINVAL;
 				goto out;
 			}
@@ -320,6 +320,102 @@ linux_to_bsd_ip_sockopt(int opt)
 	}
 	return (-1);
 }
+
+static int
+linux_to_bsd_ipv6_sockopt(int opt)
+{
+
+	switch (opt) {
+	case LINUX_IPV6_ADDRFORM:
+		return (IPV6_ADDRFORM);
+    case LINUX_IPV6_2292PKTINFO:
+        return (IPV6_2292PKTINFO);
+    case LINUX_IPV6_2292HOPOPTS:
+        return (IPV6_2292HOPOPTS);
+    case LINUX_IPV6_2292DSTOPTS:
+        return (IPV6_2292DSTOPTS);
+    case LINUX_IPV6_2292RTHDR:
+        return (IPV6_2292RTHDR);
+    case LINUX_IPV6_2292PKTOPTIONS:
+        return (IPV6_2292PKTOPTIONS);
+    case LINUX_IPV6_CHECKSUM:
+        return (IPV6_CHECKSUM);
+    case LINUX_IPV6_2292HOPLIMIT:
+        return (IPV6_2292HOPLIMIT);
+#ifdef LINUX_IPV6_RXSRCRT
+    case LINUX_IPV6_RXSRCRT:
+        return (IPV6_RXSRCRT);
+#endif
+    case LINUX_IPV6_NEXTHOP:
+        return (IPV6_NEXTHOP);
+    case LINUX_IPV6_AUTHHDR:
+        return (IPV6_AUTHHDR);
+    case LINUX_IPV6_UNICAST_HOPS:
+        return (IPV6_UNICAST_HOPS);
+    case LINUX_IPV6_MULTICAST_IF:
+        return (IPV6_MULTICAST_IF);
+    case LINUX_IPV6_MULTICAST_HOPS:
+        return (IPV6_MULTICAST_HOPS);
+    case LINUX_IPV6_MULTICAST_LOOP:
+        return (IPV6_MULTICAST_LOOP);
+	case LINUX_IPV6_JOIN_GROUP:
+		return (IPV6_JOIN_GROUP);
+	case LINUX_IPV6_LEAVE_GROUP:
+		return (IPV6_LEAVE_GROUP);
+    case LINUX_IPV6_ROUTER_ALERT:
+        return (IPV6_ROUTER_ALERT);
+    case LINUX_IPV6_MTU_DISCOVER:
+        return (IPV6_MTU_DISCOVER);
+	case LINUX_IPV6_MTU:
+		return (IPV6_MTU);
+    case LINUX_IPV6_RECVERR:
+        return (IPV6_RECVERR);
+    case LINUX_IPV6_V6ONLY:
+        return (IPV6_V6ONLY);
+    case LINUX_IPV6_JOIN_ANYCAST:
+        return (IPV6_JOIN_ANYCAST);
+    case LINUX_IPV6_LEAVE_ANYCAST:
+        return (IPV6_LEAVE_ANYCAST);
+    case LINUX_IPV6_IPSEC_POLICY:
+        return (IPV6_IPSEC_POLICY);
+    case LINUX_IPV6_XFRM_POLICY:
+        return (IPV6_XFRM_POLICY);
+	case LINUX_IPV6_RECVPKTINFO:
+		return (IPV6_RECVPKTINFO);
+    case LINUX_IPV6_PKTINFO:
+        return (IPV6_PKTINFO);
+    case LINUX_IPV6_RECVHOPLIMIT:
+        return (IPV6_RECVHOPLIMIT);
+    case LINUX_IPV6_HOPLIMIT:
+        return (IPV6_HOPLIMIT);
+    case LINUX_IPV6_RECVHOPOPTS:
+        return (IPV6_RECVHOPOPTS);
+    case LINUX_IPV6_HOPOPTS:
+        return (IPV6_HOPOPTS);
+    case LINUX_IPV6_RTHDRDSTOPTS:
+        return (IPV6_RTHDRDSTOPTS);
+    case LINUX_IPV6_RECVRTHDR:
+        return (IPV6_RECVRTHDR);
+    case LINUX_IPV6_RTHDR:
+        return (IPV6_RTHDR);
+    case LINUX_IPV6_RECVDSTOPTS:
+        return (IPV6_RECVDSTOPTS);
+    case LINUX_IPV6_DSTOPTS:
+        return (IPV6_DSTOPTS);
+    case LINUX_IPV6_RECVPATHMTU:
+        return (IPV6_RECVPATHMTU);
+    case LINUX_IPV6_PATHMTU:
+        return (IPV6_PATHMTU);
+    case LINUX_IPV6_DONTFRAG:
+        return (IPV6_DONTFRAG);
+    case LINUX_IPV6_RECVTCLASS:
+        return (IPV6_RECVTCLASS);
+    case LINUX_IPV6_TCLASS:
+        return (IPV6_TCLASS);
+	}
+	return (-1);
+}
+
 
 static int
 linux_to_bsd_so_sockopt(int opt)
@@ -669,13 +765,13 @@ linux_socket(int domain, int type, int protocol, int *out_fd)
 	 * For simplicity we do this unconditionally of the net.inet6.ip6.v6only
 	 * sysctl value.
 	 */
-	if (bsd_args.domain == PF_INET6) {
+	if (domain == PF_INET6) {
 		int v6only;
 
 		v6only = 0;
 		/* We ignore any error returned by setsockopt() */
-		kern_setsockopt(td, td->td_retval[0], IPPROTO_IPV6, IPV6_V6ONLY,
-		    &v6only, UIO_SYSSPACE, sizeof(v6only));
+		kern_setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY,
+		    &v6only, sizeof(v6only));
 	}
 #endif
 
@@ -1282,6 +1378,11 @@ linux_setsockopt(int s, int level, int name, caddr_t val, int valsize)
 	case IPPROTO_IP:
 		name = linux_to_bsd_ip_sockopt(name);
 		break;
+#ifdef INET6
+	case IPPROTO_IPV6:
+		name = linux_to_bsd_ipv6_sockopt(name);
+		break;
+#endif
 	case IPPROTO_TCP:
 		name = linux_to_bsd_tcp_sockopt(name);
 		break;
@@ -1318,6 +1419,11 @@ linux_getsockopt(int s, int level, int name, void *val, socklen_t *valsize)
 	case IPPROTO_IP:
 		name = linux_to_bsd_ip_sockopt(name);
 		break;
+#ifdef INET6
+	case IPPROTO_IPV6:
+		name = linux_to_bsd_ipv6_sockopt(name);
+		break;
+#endif
 	case IPPROTO_TCP:
 		name = linux_to_bsd_tcp_sockopt(name);
 		break;

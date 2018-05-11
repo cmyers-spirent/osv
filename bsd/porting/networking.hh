@@ -22,6 +22,11 @@ namespace osv {
     int stop_if(std::string if_name, std::string ip_addr);
     int ifup(std::string if_name);
     std::string if_ip(std::string if_name);
+
+#ifdef INET6
+    int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len);
+    int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len);
+#endif // INET6
 }
 
 #endif /* __NETWORKING_H__ */
