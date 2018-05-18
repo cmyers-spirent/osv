@@ -23,6 +23,7 @@
 #include <bsd/sys/netinet/cc.h>
 #include <bsd/sys/net/ethernet.h>
 #include <bsd/sys/net/route.h>
+#include <bsd/sys/compat/linux/linux_netlink.h>
 #ifdef INET6
 #include <bsd/sys/netinet/icmp6.h>
 #include <bsd/sys/netinet6/in6.h>
@@ -41,6 +42,8 @@ extern "C" {
 #endif
     /* AF_ROUTE */
     extern  struct domain routedomain;
+    /* AF_NETLINK */
+    extern  struct domain netlinkdomain;
 }
 
 void net_init(void)
@@ -65,9 +68,11 @@ void net_init(void)
     OSV_DOMAIN_SET(inet6);
 #endif
     OSV_DOMAIN_SET(route);
+    OSV_DOMAIN_SET(netlink);
     rts_init();
     route_init();
     vnet_route_init();
+    netlink_init();
 #ifdef INET6
     ip6_init2(NULL);
     mld_init(NULL);

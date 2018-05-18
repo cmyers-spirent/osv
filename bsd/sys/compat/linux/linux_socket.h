@@ -115,6 +115,8 @@ struct l_cmsghdr {
 #define	LINUX_AF_IPX		4
 #define	LINUX_AF_APPLETALK	5
 #define	LINUX_AF_INET6		10
+#define LINUX_AF_NETLINK	16
+#define LINUX_AF_PACKET     17
 
 /* Supported socket types */
 

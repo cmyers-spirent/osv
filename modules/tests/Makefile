@@ -86,7 +86,7 @@ tests := tst-pthread.so misc-ramdisk.so tst-vblk.so tst-bsd-evh.so \
 	tst-pthread-setcancelstate.so tst-syscall.so tst-pin.so tst-run.so \
 	tst-ifaddrs.so tst-pthread-affinity-inherit.so tst-sem-timed-wait.so \
 	tst-ttyname.so tst-pthread-barrier.so tst-feexcept.so tst-math.so \
-	tst-sigaltstack.so tst-fread.so tst-tcp-cork.so tst-tcp-v6.so \
+	tst-sigaltstack.so tst-fread.so tst-tcp-cork.so \
 	tst-calloc.so tst-posix-aio.so
 
 #	libstatic-thread-variable.so tst-static-thread-variable.so \
@@ -118,7 +118,7 @@ boost-tests := tst-rename.so tst-vfs.so tst-libc-locking.so misc-fs-stress.so \
 	tst-bsd-tcp1-zsndrcv.so tst-async.so tst-rcu-list.so tst-tcp-listen.so \
 	tst-poll.so tst-bitset-iter.so tst-timer-set.so tst-clock.so \
 	tst-rcu-hashtable.so tst-unordered-ring-mpsc.so \
-	tst-seek.so
+	tst-seek.so tst-tcp-v6.so
 
 BOOSTLIBS=$(src)/external/$(ARCH)/misc.bin/usr/lib64
 $(boost-tests:%=$(out)/tests/%): LIBS += \

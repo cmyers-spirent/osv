@@ -557,6 +557,7 @@ bsd += bsd/porting/kobj.o
 bsd += bsd/sys/netinet/if_ether.o
 bsd += bsd/sys/compat/linux/linux_socket.o
 bsd += bsd/sys/compat/linux/linux_ioctl.o
+bsd += bsd/sys/compat/linux/linux_netlink.o
 bsd += bsd/sys/net/if_ethersubr.o
 bsd += bsd/sys/net/if_llatbl.o
 bsd += bsd/sys/net/radix.o
@@ -1409,6 +1410,7 @@ musl += network/getservbyname.o
 musl += network/getservbyport_r.o
 musl += network/getservbyport.o
 libc += network/getifaddrs.o
+libc += network/netlink.o
 libc += network/if_nameindex.o
 musl += network/if_freenameindex.o
 
