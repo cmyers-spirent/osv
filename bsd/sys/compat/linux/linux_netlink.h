@@ -85,10 +85,10 @@ static inline void *nla_data(const struct nlattr *nla)
 struct ifinfomsg {
 	unsigned char	ifi_family;
 	unsigned char	__ifi_pad;
-	unsigned short	ifi_type;		/* ARPHRD_* */
-	int		        ifi_index;		/* Link index	*/
-	unsigned	    ifi_flags;		/* IFF_* flags	*/
-	unsigned	    ifi_change;		/* IFF_* change mask */
+	unsigned short	ifi_type;	/* ARPHRD_* */
+	int		ifi_index;	/* Link index	*/
+	unsigned	ifi_flags;	/* IFF_* flags	*/
+	unsigned	ifi_change;	/* IFF_* change mask */
 };
 
 #define IFLA_UNSPEC 0
@@ -99,11 +99,11 @@ struct ifinfomsg {
 #define IFLA_LINK 5
 
 struct ifaddrmsg {
-    uint8_t       ifa_family;
-    uint8_t       ifa_prefixlen;  /* The prefix length            */
-    uint8_t       ifa_flags;      /* Flags                        */
-    uint8_t       ifa_scope;      /* Address scope                */
-    uint32_t      ifa_index;      /* Link index                   */
+	uint8_t       ifa_family;
+	uint8_t       ifa_prefixlen;	/* The prefix length	*/
+	uint8_t       ifa_flags;	/* Flags		*/
+	uint8_t       ifa_scope;	/* Address scope	*/
+	uint32_t      ifa_index;	/* Link index		*/
 };
 
 #define IFA_UNSPEC 0
@@ -117,24 +117,24 @@ struct ifaddrmsg {
 #define IFA_FLAGS 8
 
 /* ifa_flags */
-#define IFA_F_SECONDARY		     0x01
-#define IFA_F_TEMPORARY		     IFA_F_SECONDARY
-#define	IFA_F_NODAD		         0x02
-#define IFA_F_OPTIMISTIC	     0x04
-#define IFA_F_DADFAILED		     0x08
-#define	IFA_F_HOMEADDRESS	     0x10
-#define IFA_F_DEPRECATED	     0x20
-#define IFA_F_TENTATIVE		     0x40
-#define IFA_F_PERMANENT		     0x80
-#define IFA_F_MANAGETEMPADDR	 0x100
-#define IFA_F_NOPREFIXROUTE	     0x200
-#define IFA_F_MCAUTOJOIN	     0x400
-#define IFA_F_STABLE_PRIVACY	 0x800
+#define IFA_F_SECONDARY		0x01
+#define IFA_F_TEMPORARY		IFA_F_SECONDARY
+#define	IFA_F_NODAD		0x02
+#define IFA_F_OPTIMISTIC	0x04
+#define IFA_F_DADFAILED		0x08
+#define	IFA_F_HOMEADDRESS	0x10
+#define IFA_F_DEPRECATED	0x20
+#define IFA_F_TENTATIVE		0x40
+#define IFA_F_PERMANENT		0x80
+#define IFA_F_MANAGETEMPADDR	0x100
+#define IFA_F_NOPREFIXROUTE	0x200
+#define IFA_F_MCAUTOJOIN	0x400
+#define IFA_F_STABLE_PRIVACY	0x800
 
 
 /* Domain ID for supporting NETLINK socket on FreeBSD (actually 16 on Linux) */
-#define AF_NETLINK      AF_VENDOR00
-#define PF_NETLINK      AF_NETLINK
+#define AF_NETLINK		AF_VENDOR00
+#define PF_NETLINK		AF_NETLINK
 
 __BEGIN_DECLS
 void netlink_init(void);
