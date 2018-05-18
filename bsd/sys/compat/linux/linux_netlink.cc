@@ -217,7 +217,7 @@ int nla_put_string(struct mbuf *m, int attrtype, const char *str)
 int nla_put_sockaddr(struct mbuf *m, int attrtype, struct bsd_sockaddr *sa)
 {
 	void *data;
-	int	  data_len;
+	int data_len;
 
 	if (!sa)
 		return 0;
@@ -250,8 +250,6 @@ int nla_put_sockaddr(struct mbuf *m, int attrtype, struct bsd_sockaddr *sa)
 
 static int	netlink_output(struct mbuf *m, struct socket *so);
 
-//#define NETLINK_ISR_DISPATCH
-#ifdef NETLINK_ISR_DISPATCH
 
 /* Currently messages are always redirected back to the socket which
  * sent the message, so an ISR dispatch handler is not needed.
@@ -276,13 +274,9 @@ raw_input_netlink_cb(struct mbuf *m, struct sockproto *proto, struct bsd_sockadd
 	KASSERT(proto != NULL, ("%s: proto is NULL", __func__));
 	KASSERT(rp != NULL, ("%s: rp is NULL", __func__));
 
-	/* No filtering requested. */
-	if ((m->m_hdr.mh_flags & RTS_FILTER_FIB) == 0)
-		return (0);
-
 	/* Check if it is a rts and the fib matches the one of the socket. */
 	fibnum = M_GETFIB(m);
-	if (proto->sp_family != PF_ROUTE ||
+	if (proto->sp_family != PF_NETLINK ||
 		rp->rcb_socket == NULL ||
 		rp->rcb_socket->so_fibnum == fibnum)
 		return (0);
@@ -295,23 +289,17 @@ static void
 netlink_input(struct mbuf *m)
 {
 	struct sockproto netlink_proto;
-	unsigned short *family;
-	struct m_tag *tag;
 
 	netlink_proto.sp_family = PF_NETLINK;
 
 	raw_input_ext(m, &netlink_proto, &netlink_src, raw_input_netlink_cb);
 }
 
-#endif // NETLINK_ISR_DISPATCH
-
 void
 netlink_init(void)
 {
 	mutex_init(&netlink_mtx);
-#ifdef NETLINK_ISR_DISPATCH
 	netisr_register(&netlink_nh);
-#endif // NETLINK_ISR_DISPATCH
 }
 
 SYSINIT(netlink, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD, netlink_init, 0);
@@ -452,6 +440,11 @@ static struct pr_usrreqs netlink_usrreqs = initialize_with([] (pr_usrreqs& x) {
 	x.pru_close =		netlink_close;
 });
 
+static void netlink_dispatch(struct socket *so __unused2, struct mbuf *m)
+{
+	netisr_queue(NETISR_NETLINK, m);
+}
+
 static int
 netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 {
@@ -459,7 +452,7 @@ netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 	struct nlmsghdr *hdr;
 	struct nlmsgerr *err;
 
-	m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+	m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
 	if (!m) {
 		return ENOBUFS;
 	}
@@ -469,7 +462,7 @@ netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 											nlm ? nlm->nlmsg_seq : 0,
 											NLMSG_ERROR, sizeof(*err),
 											nlm ? nlm->nlmsg_flags : 0)) == NULL) {
-		m_free(m);
+		m_freem(m);
 		return ENOBUFS;
 	}
 	err = (struct nlmsgerr *) nlmsg_data(hdr);
@@ -481,13 +474,11 @@ netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 		nlm = &err->msg;
 	}
 
-	SOCK_LOCK(so);
-	sbappendaddr_locked(so, &so->so_rcv, &netlink_src, m, NULL);
-	sorwakeup_locked(so);
+	netlink_dispatch(so, m);
 	return 0;
 }
 
-static int
+int
 netlink_process_getlink_msg(struct socket *so, struct nlmsghdr *nlm)
 {
 	struct ifnet *ifp = NULL;
@@ -497,7 +488,7 @@ netlink_process_getlink_msg(struct socket *so, struct nlmsghdr *nlm)
 	struct mbuf *m = NULL;
 	int error = 0;
 
-	m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+	m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
 	if (!m) {
 		return ENOBUFS;
 	}
@@ -548,17 +539,15 @@ done:
 	IFNET_RUNLOCK();
 	if (m) {
 		if (!error) {
-			SOCK_LOCK(so);
-			sbappendaddr_locked(so, &so->so_rcv, &netlink_src, m, NULL);
-			sorwakeup_locked(so);
+			netlink_dispatch(so, m);
 		} else {
-			m_free(m);
+			m_freem(m);
 		}
 	}
 	return (error);
 }
 
-static int
+int
 netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 {
 	struct ifnet *ifp = NULL;
@@ -568,7 +557,7 @@ netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 	struct mbuf *m = NULL;
 	int error = 0;
 
-	m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+	m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
 	if (!m) {
 		return ENOBUFS;
 	}
@@ -629,11 +618,9 @@ done:
 	IFNET_RUNLOCK();
 	if (m) {
 		if (!error) {
-			SOCK_LOCK(so);
-			sbappendaddr_locked(so, &so->so_rcv, &netlink_src, m, NULL);
-			sorwakeup_locked(so);
+			netlink_dispatch(so, m);
 		} else {
-			m_free(m);
+			m_freem(m);
 		}
 	}
 	return (error);
@@ -646,20 +633,16 @@ netlink_process_msg(struct mbuf *m, struct socket *so)
 	int len, error = 0;
 
 #define senderr(e) { error = e; goto flush;}
-	if (m == NULL)
-		return (EINVAL);
-	if (((m->m_hdr.mh_len < sizeof(long)) &&
-		 (m = m_pullup(m, sizeof(long))) == NULL))
-		senderr(ENOBUFS);
-	if ((m->m_hdr.mh_flags & M_PKTHDR) == 0)
-		panic("netlink_output");
+	if (m == NULL || (m->m_hdr.mh_flags & M_PKTHDR) == 0)
+		panic("Invalid message");
 	len = m->M_dat.MH.MH_pkthdr.len;
-	if (len < sizeof(*nlm) ||
-		len != mtod(m, struct nlmsghdr *)->nlmsg_len) {
+	if (len < sizeof(struct nlmsghdr))
 		senderr(EINVAL);
-	}
+	if ((m = m_pullup(m, sizeof(struct nlmsghdr))) == NULL)
+		senderr(ENOBUFS);
+	if (len != mtod(m, struct nlmsghdr *)->nlmsg_len)
+		senderr(EINVAL);
 	nlm = mtod(m, struct nlmsghdr *);
-	m_pullup(m, len);
 
 	switch(nlm->nlmsg_type) {
 		case LINUX_RTM_GETLINK:
@@ -677,7 +660,7 @@ flush:
 		netlink_senderr(so, nlm, error);
 	}
 	if (m) {
-		m_free(m);
+		m_freem(m);
 	}
 
 	return (error);
