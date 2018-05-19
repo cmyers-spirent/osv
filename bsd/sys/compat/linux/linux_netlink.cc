@@ -44,7 +44,6 @@
 #define offsetof(TYPE, MEMBER) __builtin_offsetof (TYPE, MEMBER)
 #endif
 
-
 mutex netlink_mtx;
 
 #define NETLINK_LOCK()	 mutex_lock(&netlink_mtx)
@@ -576,11 +575,37 @@ netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 			ifm->ifa_prefixlen = get_sockaddr_mask_prefix_len(ifa->ifa_netmask);
 			ifm->ifa_flags = ifp->if_flags | ifp->if_drv_flags;
 			ifm->ifa_scope = 0; // FIXME:
-			if (nla_put_string(m, IFA_LABEL, ifp->if_xname) ||
-				nla_put_sockaddr(m, IFA_ADDRESS, ifa->ifa_addr) ||
-				nla_put_sockaddr(m, IFA_BROADCAST, ifa->ifa_broadaddr)){
+			if (nla_put_string(m, IFA_LABEL, ifp->if_xname)) {
+				error = ENOBUFS;
+				goto done;
+			}
+			if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET6){
+				// FreeBSD embeds the IPv6 scope ID in the IPv6 address
+				// so need to extract and clear it before returning it.
+				struct bsd_sockaddr_in6 addr, broadaddr;
+				struct bsd_sockaddr *p_addr = ifa->ifa_addr, *p_broadaddr = ifa->ifa_broadaddr;
+				if (p_addr && IN6_IS_ADDR_LINKLOCAL(&((struct bsd_sockaddr_in6 *)p_addr)->sin6_addr)){
+					addr = *(struct bsd_sockaddr_in6 *)p_addr;
+					ifm->ifa_scope = in6_getscope(&addr.sin6_addr);
+					in6_clearscope(&addr.sin6_addr);
+					p_addr = (struct bsd_sockaddr *)&addr;
+				}
+				if (p_broadaddr && IN6_IS_ADDR_LINKLOCAL(&((struct bsd_sockaddr_in6 *)p_broadaddr)->sin6_addr)){
+					broadaddr = *(struct bsd_sockaddr_in6 *)p_broadaddr;
+					in6_clearscope(&broadaddr.sin6_addr);
+					p_broadaddr = (struct bsd_sockaddr *)&broadaddr;
+				}
+				if (nla_put_sockaddr(m, IFA_ADDRESS, p_addr) ||
+					nla_put_sockaddr(m, IFA_BROADCAST, p_broadaddr)){
 					error = ENOBUFS;
 					goto done;
+				}
+			} else {
+				if (nla_put_sockaddr(m, IFA_ADDRESS, ifa->ifa_addr) ||
+					nla_put_sockaddr(m, IFA_BROADCAST, ifa->ifa_broadaddr)){
+					error = ENOBUFS;
+					goto done;
+				}
 			}
 			nlmsg_end(m, nlh);
 		}

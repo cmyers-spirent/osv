@@ -350,8 +350,8 @@ void* do_main_thread(void *_main_args)
 
         has_if = true;
         // Start DHCP by default and wait for an IP
-        if (osv::start_if(if_name, "0.0.0.0", "255.255.255.0") != 0 ||
-            osv::ifup(if_name) != 0)
+        if (osv::ifup(if_name) != 0 ||
+            osv::start_if(if_name, "0.0.0.0", "255.255.255.0") != 0)
             debug("Could not initialize network interface.\n");
     });
     if (has_if) {
