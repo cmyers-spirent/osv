@@ -23,10 +23,13 @@ namespace osv {
     int ifup(std::string if_name);
     std::string if_ip(std::string if_name);
 
+    int if_add_addr(std::string if_name, std::string ip_addr, std::string netmask);
+    int if_del_addr(std::string if_name, std::string ip_addr, std::string netmask);
+
 #ifdef INET6
-    int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len);
-    int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len);
-#endif // INET6
+    int set_ipv6_accept_rtadv(bool enable);
+    bool get_ipv6_accept_rtadv(void);
+#endif
 }
 
 #endif /* __NETWORKING_H__ */

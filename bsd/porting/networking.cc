@@ -21,6 +21,7 @@
 #include <bsd/sys/netinet6/in6.h>
 #include <bsd/sys/netinet6/in6_var.h>
 #include <bsd/sys/netinet6/nd6.h>
+#include <bsd/sys/netinet6/ip6_var.h>
 
 // FIXME: inet_pton() is from musl which uses different AF_INET6
 #define LINUX_AF_INET6 10
@@ -68,6 +69,18 @@ int if_set_mtu(std::string if_name, u16 mtu)
 }
 
 int start_if(std::string if_name, std::string ip_addr, std::string mask_addr)
+{
+    return if_add_addr(if_name, ip_addr, mask_addr);
+}
+
+int stop_if(std::string if_name, std::string ip_addr)
+{
+    std::string mask_addr;
+
+    return if_del_addr(if_name, ip_addr, mask_addr);
+}
+
+int if_add_ipv4_addr(std::string if_name, std::string ip_addr, std::string mask_addr)
 {
     int error, success;
     struct bsd_ifreq oldaddr;
@@ -125,7 +138,7 @@ out:
     return (error);
 }
 
-int stop_if(std::string if_name, std::string ip_addr)
+int if_del_ipv4_addr(std::string if_name, std::string ip_addr)
 {
     int error, success;
     struct in_aliasreq ifra;
@@ -165,7 +178,7 @@ out:
 
 #ifdef INET6
 
-int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
+int if_add_ipv6_addr(std::string if_name, std::string ip_addr, std::string netmask)
 {
     int error, success;
     struct in6_ifreq oldaddr;
@@ -175,7 +188,7 @@ int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
     //struct bsd_sockaddr_in6* dst       = &ifra.ifra_dstaddr;
     struct ifnet* ifp;
 
-    if ((if_name.empty()) || (ip_addr.empty()) || (prefix_len < 0 || prefix_len > 128)) {
+    if (if_name.empty() || ip_addr.empty() || netmask.empty()) {
         return (EINVAL);
     }
 
@@ -200,7 +213,15 @@ int if_add_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
     addr->sin6_len = sizeof(struct bsd_sockaddr_in6);
 
     /* Mask */
-    in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    if (inet_pton(LINUX_AF_INET6, netmask.c_str(), &mask->sin6_addr) != 1) {
+        /* Interpret it as a prefix length */
+        long prefix_len = strtol(netmask.c_str(), NULL, 0);
+        if (prefix_len < 0 || prefix_len > 128) {
+            error = EINVAL;
+            goto out;
+        }
+        in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    }
     mask->sin6_family = AF_INET6;
     mask->sin6_len = sizeof(struct bsd_sockaddr_in6);
 
@@ -216,7 +237,7 @@ out:
     return (error);
 }
 
-int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
+int if_del_ipv6_addr(std::string if_name, std::string ip_addr, std::string netmask)
 {
     int error, success;
     struct in6_aliasreq ifra;
@@ -224,9 +245,8 @@ int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
     struct bsd_sockaddr_in6* mask      = &ifra.ifra_prefixmask;
     struct ifnet* ifp;
 
-    if ((if_name.empty()) || (ip_addr.empty()) || (prefix_len < 0 || prefix_len > 128)) {
+    if (if_name.empty() || ip_addr.empty() || netmask.empty())
         return (EINVAL);
-    }
 
     bzero(&ifra, sizeof(struct in6_aliasreq));
 
@@ -247,7 +267,15 @@ int if_del_ipv6_addr(std::string if_name, std::string ip_addr, int prefix_len)
     addr->sin6_len = sizeof(struct bsd_sockaddr_in6);
 
     /* Mask */
-    in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    if (inet_pton(LINUX_AF_INET6, netmask.c_str(), &mask->sin6_addr) != 1) {
+        /* Interpret it as a prefix length */
+        long prefix_len = strtol(netmask.c_str(), NULL, 0);
+        if (prefix_len < 0 || prefix_len > 128) {
+            error = EINVAL;
+            goto out;
+        }
+        in6_prefixlen2mask(&mask->sin6_addr, prefix_len);
+    }
     mask->sin6_family = AF_INET6;
     mask->sin6_len = sizeof(struct bsd_sockaddr_in6);
 
@@ -258,8 +286,46 @@ out:
     return (error);
 }
 
+int set_ipv6_accept_rtadv(bool enable)
+{
+    V_ip6_accept_rtadv = enable ? 1 : 0;
+    return 0;
+}
+
+bool get_ipv6_accept_rtadv(void)
+{
+    return (V_ip6_accept_rtadv != 0);
+}
+
 #endif // INET6
 
+int if_add_addr(std::string if_name, std::string ip_addr, std::string mask_addr)
+{
+    struct in_addr v4;
+    if (inet_pton(AF_INET, ip_addr.c_str(), &v4)) {
+        return if_add_ipv4_addr(if_name, ip_addr, mask_addr);
+    }
+#ifdef INET6
+    else {
+        return if_add_ipv6_addr(if_name, ip_addr, mask_addr);
+    }
+#endif
+    return EINVAL;
+}
+
+int if_del_addr(std::string if_name, std::string ip_addr, std::string mask_addr)
+{
+    struct in_addr v4;
+    if (inet_pton(AF_INET, ip_addr.c_str(), &v4)) {
+        return if_del_ipv4_addr(if_name, ip_addr);
+    }
+#ifdef INET6
+    else {
+        return if_del_ipv6_addr(if_name, ip_addr, mask_addr);
+    }
+#endif
+    return EINVAL;
+}
 
 int ifup(std::string if_name)
 {
@@ -300,4 +366,6 @@ std::string if_ip(std::string if_name) {
     }
     return inet_ntoa(((bsd_sockaddr_in*)&(addr.ifr_addr))->sin_addr);
 }
+
+
 }
