@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "netlink.h"
 #include <stdio.h>
+#include <poll.h>
 
 static int __netlink_enumerate(int fd, unsigned int seq, int type, int af,
 	int (*cb)(void *ctx, struct nlmsghdr *h), void *ctx)
@@ -31,7 +32,18 @@ static int __netlink_enumerate(int fd, unsigned int seq, int type, int af,
 
 	while (1) {
 		r = recv(fd, u.buf, sizeof(u.buf), MSG_DONTWAIT);
-		if (r <= 0) return -1;
+		if (r <= 0)  {
+			/* Wait if recv() timed out because response might not be queued in time */
+			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+				struct pollfd pfds[1];
+				pfds[0].fd = fd;
+				pfds[0].events = POLLIN;
+				pfds[0].revents = 0;
+				if (poll(pfds, 1, 1000) != 0)
+					continue;
+			}
+			return -1;
+		}
 		for (h = &u.reply; NLMSG_OK(h, (void*)&u.buf[r]); h = NLMSG_NEXT(h)) {
 			if (h->nlmsg_type == NLMSG_DONE) return 0;
 			if (h->nlmsg_type == NLMSG_ERROR) return -1;
