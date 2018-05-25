@@ -84,6 +84,7 @@
 #endif
 
 #include <osv/poll.h>
+#include <osv/net_channel.hh>
 
 /*
  * TCP protocol interface to socket abstraction.

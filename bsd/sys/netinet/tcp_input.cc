@@ -84,6 +84,7 @@
 #include <bsd/sys/netinet6/ip6_var.h>
 #include <bsd/sys/netinet/icmp6.h>
 #include <bsd/sys/netinet6/in6_pcb.h>
+#include <bsd/sys/netinet6/scope6_var.h>
 #endif
 #include <bsd/sys/netinet/tcp_fsm.h>
 #include <bsd/sys/netinet/tcp_seq.h>
@@ -99,6 +100,7 @@
 #include <osv/poll.h>
 #include <osv/net_trace.hh>
 #include <osv/aligned_new.hh>
+#include <osv/net_channel.hh>
 
 TRACEPOINT(trace_tcp_input_ack, "%p: We've got ACK: %u", void*, unsigned int);
 
@@ -3481,7 +3483,7 @@ tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 
 // INP_LOCK held
 static void
-tcp_net_channel_packet(tcpcb* tp, mbuf* m)
+tcp_net_channel_ipv4_packet(tcpcb* tp, mbuf* m)
 {
 	if (tp->get_state() <= TCPS_LISTEN) {
 		// We can't hand this packet off to tcp_do_segment due to the
@@ -3517,26 +3519,91 @@ tcp_net_channel_packet(tcpcb* tp, mbuf* m)
 	assert(!want_close);
 }
 
-static ipv4_tcp_conn_id tcp_connection_id(tcpcb* tp)
+static void tcp_ipv4_connection_id(const tcpcb* tp, ipv4_tcp_conn_id* id)
 {
 	auto& conn = tp->t_inpcb->inp_inc.inc_ie;
-	return {
-		conn.ie_dependfaddr.ie46_foreign.ia46_addr4,
-		conn.ie_dependladdr.ie46_local.ia46_addr4,
-		ntohs(conn.ie_fport),
-		ntohs(conn.ie_lport)
-	};
+	id->src_addr = conn.ie_dependfaddr.ie46_foreign.ia46_addr4;
+	id->dst_addr = conn.ie_dependladdr.ie46_local.ia46_addr4;
+	id->src_port = ntohs(conn.ie_fport);
+	id->dst_port = ntohs(conn.ie_lport);
 }
+
+#ifdef INET6
+
+// INP_LOCK held
+static void
+tcp_net_channel_ipv6_packet(tcpcb* tp, mbuf* m)
+{
+	if (tp->get_state() <= TCPS_LISTEN) {
+		// We can't hand this packet off to tcp_do_segment due to the
+		// current connection state.	Drop the channel and handle the
+		// packet via the slow path.
+		tcp_teardown_net_channel(tp);
+		netisr_dispatch(NETISR_ETHER, m);
+		return;
+	}
+
+	log_packet_handling(m, NETISR_ETHER);
+	caddr_t start = m->m_hdr.mh_data;
+	auto h = start;
+	h += ETHER_HDR_LEN;
+	auto ip_hdr = reinterpret_cast<ip6_hdr*>(h);
+	int ip_off = ETHER_HDR_LEN;
+	int nxt;
+	int nxt_off = ip6_lasthdr(m, ip_off, IPPROTO_IPV6, &nxt);
+	h = start + nxt_off;
+	auto th = reinterpret_cast<tcphdr*>(h);
+	h += th->th_off << 2;
+	auto drop_hdrlen = h - start;
+	tcp_fields_to_host(th);
+	trace_tcp_input_ack(tp, th->th_ack.raw());
+	auto so = tp->t_inpcb->inp_socket;
+	auto ip_len = sizeof(*ip_hdr) + ntohs(ip_hdr->ip6_plen);
+	auto tlen = ip_len - ((nxt_off - ip_off) +  (th->th_off << 2));
+	auto iptos = (ntohl(ip_hdr->ip6_flow) >> 20) & 0xff;
+	SOCK_LOCK_ASSERT(so);
+
+	bool want_close;
+	m_trim(m, ETHER_HDR_LEN + ip_len);
+	tcp_do_segment(m, th, so, tp, drop_hdrlen, tlen, iptos, TI_UNLOCKED, want_close);
+	// since a socket is still attached, we should not be closing
+	assert(!want_close);
+}
+
+static void tcp_ipv6_connection_id(const tcpcb* tp, ipv6_tcp_conn_id* id)
+{
+	auto& conn = tp->t_inpcb->inp_inc.inc_ie;
+	id->src_addr = conn.ie_dependfaddr.ie6_foreign;
+	in6_clearscope(&id->src_addr);
+	id->dst_addr = conn.ie_dependladdr.ie6_local;
+	in6_clearscope(&id->dst_addr);
+	id->src_port = ntohs(conn.ie_fport);
+	id->dst_port = ntohs(conn.ie_lport);
+}
+
+#endif /* INET6 */
 
 void
 tcp_setup_net_channel(tcpcb* tp, struct ifnet* intf)
 {
-	auto nc = aligned_new<net_channel>([=] (mbuf *m) { tcp_net_channel_packet(tp, m); });
-	tp->nc = nc;
 	tp->nc_intf = intf;
-	intf->add_net_channel(nc, tcp_connection_id(tp));
+#ifdef INET6
+	if (tp->t_inpcb->inp_inc.inc_flags & INC_ISIPV6) {
+		ipv6_tcp_conn_id id;
+		tcp_ipv6_connection_id(tp, &id);
+		tp->nc = aligned_new<net_channel>([=] (mbuf *m) { tcp_net_channel_ipv6_packet(tp, m); });
+		intf->if_classifier->add(id, tp->nc);
+	}
+	else
+#endif
+	{
+		ipv4_tcp_conn_id id;
+		tcp_ipv4_connection_id(tp, &id);
+		tp->nc = aligned_new<net_channel>([=] (mbuf *m) { tcp_net_channel_ipv4_packet(tp, m); });
+		intf->if_classifier->add(id, tp->nc);
+	}
 	auto so = tp->t_inpcb->inp_socket;
-	so->so_nc = nc;
+	so->so_nc = tp->nc;
 	if (so->fp) {
 		WITH_LOCK(so->fp->f_lock) {
 			for (auto&& pl : so->fp->f_poll_list) {
@@ -3553,10 +3620,23 @@ tcp_setup_net_channel(tcpcb* tp, struct ifnet* intf)
 
 void tcp_teardown_net_channel(tcpcb *tp)
 {
-	if (!tp->nc_intf) {
+	auto intf = tp->nc_intf;
+	if (!intf) {
 		return;
 	}
-	tp->nc_intf->del_net_channel(tcp_connection_id(tp));
+#ifdef INET6
+	if (tp->t_inpcb->inp_inc.inc_flags & INC_ISIPV6) {
+		ipv6_tcp_conn_id id;
+		tcp_ipv6_connection_id(tp, &id);
+		intf->if_classifier->remove(id);
+	}
+	else
+#endif
+	{
+		ipv4_tcp_conn_id id;
+		tcp_ipv4_connection_id(tp, &id);
+		intf->if_classifier->remove(id);
+	}
 	tp->nc_intf = nullptr;
 	// keep tp->nc around since it might still contain packets
 }
@@ -3574,9 +3654,6 @@ tcp_free_net_channel(tcpcb* tp)
 			so->so_nc->del_poller(*pl._req);
 		}
 		so->so_nc = nullptr;
-	}
-	if (tp->nc_intf) {
-		tp->nc_intf->del_net_channel(tcp_connection_id(tp));
 	}
 	osv::rcu_dispose(tp->nc);
 	tp->nc = nullptr;
