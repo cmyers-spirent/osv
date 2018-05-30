@@ -407,7 +407,7 @@ void* do_main_thread(void *_main_args)
             // Add nameserver addresses
             if (opt_nameserver.size() != 0) {
                 std::vector<boost::asio::ip::address> dns_servers;
-                for (auto t : opt_defaultgw) {
+                for (auto t : opt_nameserver) {
                     auto addr = boost::asio::ip::address::from_string(t);
                     dns_servers.push_back(addr);
                 }
