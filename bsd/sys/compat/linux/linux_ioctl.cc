@@ -199,6 +199,17 @@ linux_gifhwaddr(struct ifnet *ifp, struct l_ifreq *ifr)
     return (ENOENT);
 }
 
+static int
+linux_sifname(socket_file *fp, struct l_ifreq *data)
+{
+    struct bsd_ifreq ifreq;
+
+    // FreeBSD ifreq uses a pointer to the new name string instead of including it in the struct
+    memcpy((char *)&ifreq, data->ifr_name, IFNAMSIZ);
+    ifreq.ifr_ifru.ifru_data = (caddr_t)(data->ifr_ifru.ifru_newname);
+
+    return fp->bsd_ioctl(SIOCSIFNAME, &ifreq);
+}
 
 /*
  * Fix the interface address field in bsd_ifreq. The bsd stack expects a
@@ -278,7 +289,9 @@ linux_ioctl_socket(socket_file *fp, u_long cmd, void *data)
         break;
 
     case SIOCSIFNAME:
-        error = ENOIOCTL;
+        if ((ifp = ifunit_ref((char *)data)) == NULL)
+            return (EINVAL);
+        error = linux_sifname(fp, (struct l_ifreq *)data);
         break;
 
     case SIOCGIFHWADDR:

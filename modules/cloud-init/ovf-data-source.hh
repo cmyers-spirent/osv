@@ -32,9 +32,12 @@ private:
     std::string base64_decode(const std::string &);
 
     static const std::string mgmt_if;
-    static const std::string ip_key;
-    static const std::string netmask_key;
-    static const std::string gateway_key;
+    static const std::string ipv4_key;
+    static const std::string ipv4_netmask_key;
+    static const std::string ipv4_gateway_key;
+    static const std::string ipv6_key;
+    static const std::string ipv6_netmask_key;
+    static const std::string ipv6_gateway_key;
 
     bool maybe_config_interface();
 };
