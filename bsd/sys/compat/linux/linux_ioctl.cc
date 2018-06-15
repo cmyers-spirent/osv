@@ -234,6 +234,16 @@ linux_to_bsd_ifreq(struct bsd_ifreq *ifr_p)
 }
 
 /*
+ * FreeBSD ifru_index is short but Linux is an int so need to clear extra bits.
+ */
+static inline void 
+bsd_to_linux_ifreq_ifindex(struct bsd_ifreq *ifr_p)
+{
+    void *ptr = &ifr_p->ifr_index;
+    *(int *)(ptr) = ifr_p->ifr_index;
+}
+
+/*
  * Socket related ioctls
  */
 
@@ -262,10 +272,16 @@ linux_ioctl_socket(socket_file *fp, u_long cmd, void *data)
 
     case SIOCGIFMTU:
     case SIOCSIFMTU:
+        if ((ifp = ifunit_ref((char *)data)) == NULL)
+            return (EINVAL);
+        error = fp->bsd_ioctl(cmd, data);
+        break;
+
     case SIOCGIFINDEX:
         if ((ifp = ifunit_ref((char *)data)) == NULL)
             return (EINVAL);
         error = fp->bsd_ioctl(cmd, data);
+	bsd_to_linux_ifreq_ifindex((struct bsd_ifreq *)data);
         break;
 
     case SIOCGIFADDR:
