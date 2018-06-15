@@ -2089,7 +2089,7 @@ icmp6_rip6_input(struct mbuf **mp, int off)
 					ip6_savecontrol(last, n, &opts);
 				/* strip intermediate headers */
 				m_adj(n, off);
-				SOCK_LOCK(last->inp_socket);
+				SOCK_LOCK_ASSERT(last->inp_socket);
 				if (sbappendaddr_locked(last->inp_socket,
 				    &last->inp_socket->so_rcv,
 				    (struct bsd_sockaddr *)&fromsa, n, opts)
@@ -2099,7 +2099,6 @@ icmp6_rip6_input(struct mbuf **mp, int off)
 					if (opts) {
 						m_freem(opts);
 					}
-					SOCK_UNLOCK(last->inp_socket);
 				} else
 					sorwakeup_locked(last->inp_socket);
 				opts = NULL;
@@ -2134,13 +2133,12 @@ icmp6_rip6_input(struct mbuf **mp, int off)
 				}
 			}
 		}
-		SOCK_LOCK(last->inp_socket);
+		SOCK_LOCK_ASSERT(last->inp_socket);
 		if (sbappendaddr_locked(last->inp_socket, &last->inp_socket->so_rcv,
 		    (struct bsd_sockaddr *)&fromsa, m, opts) == 0) {
 			m_freem(m);
 			if (opts)
 				m_freem(opts);
-			SOCK_UNLOCK(last->inp_socket);
 		} else
 			sorwakeup_locked(last->inp_socket);
 		INP_UNLOCK(last);

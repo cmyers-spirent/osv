@@ -156,10 +156,9 @@ udp6_append(struct inpcb *inp, struct mbuf *n, int off,
 	m_adj(n, off + sizeof(struct udphdr));
 
 	so = inp->inp_socket;
-	SOCK_LOCK(so);
+	SOCK_LOCK_ASSERT(so);
 	if (sbappendaddr_locked(so, &so->so_rcv, (struct bsd_sockaddr *)fromsa, n,
 	    opts) == 0) {
-		SOCK_UNLOCK(so);
 		m_freem(n);
 		if (opts)
 			m_freem(opts);
@@ -855,17 +854,17 @@ udp6_attach(struct socket *so, int proto, struct thread *td)
 		return (ENOMEM);
 	}
 
-    /* soreserve() must be done afer inpcb is created which
-     * sets up the socket so_mtx.
-     */
+	/* soreserve() must be done afer inpcb is created which
+	 * sets up the socket so_mtx.
+	 */
 	if (so->so_snd.sb_hiwat == 0 || so->so_rcv.sb_hiwat == 0) {
 		error = soreserve(so, udp_sendspace, udp_recvspace);
 		if (error) {
-            in_pcbdetach(inp);
-            in_pcbfree(inp);
-            INP_INFO_WUNLOCK(&V_udbinfo);
+			in_pcbdetach(inp);
+			in_pcbfree(inp);
+			INP_INFO_WUNLOCK(&V_udbinfo);
 			return (error);
-        }
+		}
 	}
 
 	inp->inp_vflag |= INP_IPV6;
@@ -1068,9 +1067,8 @@ udp6_disconnect(struct socket *so)
 	in6_pcbdisconnect(inp);
 	inp->in6p_laddr = in6addr_any;
 	INP_HASH_WUNLOCK(&V_udbinfo);
-	SOCK_LOCK(so);
+	SOCK_LOCK_ASSERT(so);
 	so->so_state &= ~SS_ISCONNECTED;		/* XXX */
-	SOCK_UNLOCK(so);
 out:
 	INP_UNLOCK(inp);
 	return (0);

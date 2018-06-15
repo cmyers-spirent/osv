@@ -262,7 +262,8 @@ rip6_input(struct mbuf **mp, int *offp, int proto)
 					ip6_savecontrol(last, n, &opts);
 				/* strip intermediate headers */
 				m_adj(n, *offp);
-				if (sbappendaddr(last->inp_socket, &last->inp_socket->so_rcv,
+				SOCK_LOCK_ASSERT(last->inp_socket);
+				if (sbappendaddr_locked(last->inp_socket, &last->inp_socket->so_rcv,
 						(struct bsd_sockaddr *)&fromsa,
 						 n, opts) == 0) {
 					m_freem(n);
@@ -270,7 +271,7 @@ rip6_input(struct mbuf **mp, int *offp, int proto)
 						m_freem(opts);
 					V_rip6stat.rip6s_fullsock++;
 				} else
-					sorwakeup(last->inp_socket);
+					sorwakeup_locked(last->inp_socket);
 				opts = NULL;
 			}
 			INP_UNLOCK(last);
@@ -296,14 +297,16 @@ rip6_input(struct mbuf **mp, int *offp, int proto)
 			ip6_savecontrol(last, m, &opts);
 		/* Strip intermediate headers. */
 		m_adj(m, *offp);
-		if (sbappendaddr(last->inp_socket, &last->inp_socket->so_rcv,
+		SOCK_LOCK_ASSERT(last->inp_socket);
+		if (sbappendaddr_locked(last->inp_socket, &last->inp_socket->so_rcv,
 		    (struct bsd_sockaddr *)&fromsa, m, opts) == 0) {
 			m_freem(m);
 			if (opts)
 				m_freem(opts);
 			V_rip6stat.rip6s_fullsock++;
-		} else
-			sorwakeup(last->inp_socket);
+		} else {
+			sorwakeup_locked(last->inp_socket);
+		}
 		INP_UNLOCK(last);
 	} else {
 		V_rip6stat.rip6s_nosock++;
@@ -538,7 +541,6 @@ rip6_output(m, va_alist)
 			m_tag_prepend(m, mtag);
 		}
 	}
-
 	error = ip6_output(m, optp, NULL, 0, in6p->in6p_moptions, &oifp, in6p);
 	if (so->so_proto->pr_protocol == IPPROTO_ICMPV6) {
 		if (oifp)
@@ -651,9 +653,6 @@ rip6_attach(struct socket *so, int proto, struct thread *td)
 	error = priv_check(td, PRIV_NETINET_RAW);
 	if (error)
 		return (error);
-	error = soreserve(so, rip_sendspace, rip_recvspace);
-	if (error)
-		return (error);
 	filter = (struct icmp6_filter *) malloc(sizeof(struct icmp6_filter));
 	if (filter == NULL)
 		return (ENOMEM);
@@ -663,6 +662,15 @@ rip6_attach(struct socket *so, int proto, struct thread *td)
 		INP_INFO_WUNLOCK(&V_ripcbinfo);
 		free(filter);
 		return (ENOMEM);
+	}
+	/* soreserve() must be done faer inpcb i screated which sets up the socket so_mtx */
+	error = soreserve(so, rip_sendspace, rip_recvspace);
+	if (error) {
+		in_pcbdetach(inp);
+		in_pcbfree(inp);
+		INP_INFO_WUNLOCK(&V_ripcbinfo);
+		free(filter);
+		return (error);
 	}
 	INP_INFO_WUNLOCK(&V_ripcbinfo);
 	inp->inp_vflag |= INP_IPV6;
