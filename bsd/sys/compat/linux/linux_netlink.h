@@ -81,6 +81,9 @@ static inline void *nla_data(const struct nlattr *nla)
 #define LINUX_RTM_NEWADDR	20
 #define LINUX_RTM_DELADDR	21
 #define LINUX_RTM_GETADDR	22
+#define LINUX_RTM_NEWNEIGH	28
+#define LINUX_RTM_DELNEIGH	29
+#define LINUX_RTM_GETNEIGH	30
 
 struct ifinfomsg {
 	unsigned char	ifi_family;
@@ -131,6 +134,35 @@ struct ifaddrmsg {
 #define IFA_F_MCAUTOJOIN	0x400
 #define IFA_F_STABLE_PRIVACY	0x800
 
+struct ndmsg {
+	uint8_t		ndm_family;
+	uint8_t		ndm_pad1;
+	uint16_t	ndm_pad2;
+	int32_t		ndm_ifindex;
+	uint16_t	ndm_state;
+	uint8_t		ndm_flags;
+	uint8_t		ndm_type;
+};
+
+#define NDA_UNSPEC		0x0
+#define NDA_DST			0x01
+#define NDA_LLADDR		0x02
+#define NDA_CACHEINFO		0x03
+
+#define NTF_USE			0x01
+#define NTF_SELF		0x02
+#define NTF_MASTER		0x04
+#define NTF_PROXY		0x08
+#define NTF_EXT_LEARNED		0x10
+#define NTF_OFFLOADED		0x20
+#define NTF_ROUTER		0x80
+
+#define NUD_INCOMPLETE	0x01
+#define NUD_REACHABLE	0x02
+#define NUD_STALE	0x04
+#define NUD_DELAY	0x08
+#define NUD_PROBE	0x10
+#define NUD_FAILED	0x20
 
 /* Domain ID for supporting NETLINK socket on FreeBSD (actually 16 on Linux) */
 #define AF_NETLINK		AF_VENDOR00

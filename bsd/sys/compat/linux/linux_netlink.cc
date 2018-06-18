@@ -29,11 +29,14 @@
 
 #include <bsd/sys/netinet/in.h>
 #include <bsd/sys/netinet/if_ether.h>
+#include <bsd/sys/net/if_llatbl.h>
+
 #ifdef INET6
 #include <bsd/sys/netinet/ip6.h>
 #include <bsd/sys/netinet6/ip6_var.h>
 #include <bsd/sys/netinet6/in6_var.h>
 #include <bsd/sys/netinet6/scope6_var.h>
+#include <bsd/sys/netinet6/nd6.h>
 #endif
 
 #include <bsd/sys/compat/linux/linux_netlink.h>
@@ -50,10 +53,18 @@ mutex netlink_mtx;
 #define NETLINK_UNLOCK() mutex_unlock(&netlink_mtx)
 #define NETLINK_LOCK_ASSERT()	 assert(netlink_mtx.owned())
 
+struct bsd_sockaddr_nl {
+	uint8_t		nl_len;       /* length of this struct */
+	bsd_sa_family_t nl_family;    /* AF_NETLINK */
+	unsigned short  nl_pad;       /* Zero */
+	pid_t		nl_pid;       /* Port ID */
+	uint32_t	nl_groups;    /* Multicast groups mask */
+};
 
 MALLOC_DEFINE(M_NETLINK, "netlink", "netlink socket");
 
 static struct	bsd_sockaddr netlink_src = { 2, PF_NETLINK, };
+
 
 
 static size_t mask_to_prefix_len(const uint8_t *bytes, size_t n_bytes)
@@ -341,6 +352,19 @@ netlink_attach(struct socket *so, int proto, struct thread *td)
 static int
 netlink_bind(struct socket *so, struct bsd_sockaddr *nam, struct thread *td)
 {
+	struct rawcb *rp = sotorawcb(so);
+
+	KASSERT(rp != NULL, ("netlink_bind: rp == NULL"));
+
+	if (nam->sa_family == AF_NETLINK) {
+		if (nam->sa_len != sizeof(struct bsd_sockaddr_nl)) {
+			bsd_log(ERR, "%s(%d) %s Invalid sockaddr_nl length %d expected %d\n",
+				__FILE__, __LINE__, __FUNCTION__, nam->sa_len, sizeof(struct bsd_sockaddr_nl));
+			return EINVAL;
+		}
+		// TODO: stash the nl_pid somewhere
+		return 0;
+	}
 	return (raw_usrreqs.pru_bind(so, nam, td)); /* xxx just EINVAL */
 }
 
@@ -433,10 +457,10 @@ netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 	}
 
 	if ((hdr = (struct nlmsghdr *)nlmsg_put(m,
-											nlm ? nlm->nlmsg_pid : 0,
-											nlm ? nlm->nlmsg_seq : 0,
-											NLMSG_ERROR, sizeof(*err),
-											nlm ? nlm->nlmsg_flags : 0)) == NULL) {
+						nlm ? nlm->nlmsg_pid : 0,
+						nlm ? nlm->nlmsg_seq : 0,
+						NLMSG_ERROR, sizeof(*err),
+						nlm ? nlm->nlmsg_flags : 0)) == NULL) {
 		m_freem(m);
 		return ENOBUFS;
 	}
@@ -453,7 +477,7 @@ netlink_senderr(struct socket *so, struct nlmsghdr *nlm, int error)
 	return 0;
 }
 
-int
+static int
 netlink_process_getlink_msg(struct socket *so, struct nlmsghdr *nlm)
 {
 	struct ifnet *ifp = NULL;
@@ -522,7 +546,7 @@ done:
 	return (error);
 }
 
-int
+static int
 netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 {
 	struct ifnet *ifp = NULL;
@@ -627,6 +651,159 @@ done:
 	return (error);
 }
 
+
+static uint16_t lle_state_to_ndm_state(int state)
+{
+	switch(state) {
+	case ND6_LLINFO_INCOMPLETE:
+		return NUD_INCOMPLETE;
+	case ND6_LLINFO_REACHABLE:
+		return NUD_REACHABLE;
+	case ND6_LLINFO_STALE:
+		return NUD_STALE;
+	case ND6_LLINFO_DELAY:
+		return NUD_DELAY;
+	case ND6_LLINFO_PROBE:
+		return NUD_PROBE;
+	case ND6_LLINFO_NOSTATE:
+	default:
+		return 0;	
+	}
+}
+
+static int netlink_bsd_to_linux_family(int family)
+{
+	switch(family) {
+	case AF_INET:
+		return LINUX_AF_INET;
+	case AF_INET6:
+		return LINUX_AF_INET6;
+	default:
+		return -1;
+	}
+}
+
+struct netlink_getneigh_lle_cbdata {
+	struct nlmsghdr *nlm;
+	struct mbuf *m;
+	uint16_t family;
+	uint16_t state;
+};
+
+static int
+netlink_getneigh_lle_cb(struct lltable *llt, struct llentry *lle, void *data)
+{
+	struct netlink_getneigh_lle_cbdata *cbdata = (struct netlink_getneigh_lle_cbdata *) data;
+	int ndm_state = lle_state_to_ndm_state(lle->ln_state);
+	int ndm_family = netlink_bsd_to_linux_family(llt->llt_af);
+
+	if (cbdata->family && cbdata->family != ndm_family)
+		return 0;
+
+	if (cbdata->state && !(cbdata->state & ndm_state))
+		return 0;
+
+	struct nlmsghdr *nlm = cbdata->nlm;
+	struct mbuf *m = cbdata->m;
+	struct ndmsg *ndm;
+	struct nlmsghdr *nlh = nlmsg_begin(m, nlm->nlmsg_pid, nlm->nlmsg_seq, LINUX_RTM_GETNEIGH, sizeof(*ndm), nlm->nlmsg_flags);
+
+	if (!nlh) {
+		return ENOBUFS;
+	}
+
+	ndm = (struct ndmsg *) nlmsg_data(nlh);
+	ndm->ndm_family = ndm_family;
+	ndm->ndm_ifindex = llt->llt_ifp->if_index;
+	ndm->ndm_state = ndm_state;
+	ndm->ndm_flags = 0;
+	if (lle->ln_router)
+		ndm->ndm_flags |= NTF_ROUTER;
+	ndm->ndm_type = 0;
+
+	struct bsd_sockaddr *sa = L3_ADDR(lle);
+	if (sa->sa_family == AF_INET) {
+		struct bsd_sockaddr_in *sa4 = (struct bsd_sockaddr_in *) sa;
+		if (nla_put_type(m, NDA_DST, sa4->sin_addr)) {
+			return ENOBUFS;
+		}
+	}
+#ifdef INET6
+	else if (sa->sa_family == AF_INET6) {
+		struct bsd_sockaddr_in6 sa6 = *(struct bsd_sockaddr_in6 *) sa;
+		if (IN6_IS_ADDR_LINKLOCAL(&sa6.sin6_addr)){
+			in6_clearscope(&sa6.sin6_addr);
+		}
+		if (nla_put_type(m, NDA_DST, sa6.sin6_addr)) {
+			return ENOBUFS;
+		}
+	}
+#endif
+	
+	if (nla_put(m, NDA_LLADDR, 6, lle->ll_addr.mac16)) {
+		return ENOBUFS;
+	}
+
+	nlmsg_end(m, nlh);
+
+	return 0;
+}
+
+
+static int
+netlink_getneigh_lltable_cb(struct lltable *llt, void *cbdata)
+{
+	struct netlink_getneigh_lle_cbdata *data = (struct netlink_getneigh_lle_cbdata *) cbdata;
+	int error = 0;
+
+	if (data->family && data->family != netlink_bsd_to_linux_family(llt->llt_af))
+		return 0;
+	if (llt->llt_ifp->if_flags & IFF_LOOPBACK)
+		return 0;
+
+	IF_AFDATA_RLOCK(llt->llt_ifp);
+	error = lltable_foreach_lle(llt, netlink_getneigh_lle_cb, data);
+	IF_AFDATA_RUNLOCK(llt->llt_ifp);
+
+	return error;
+}
+
+static int
+netlink_process_getneigh_msg(struct socket *so, struct nlmsghdr *nlm)
+{
+	struct mbuf *m = NULL;
+	struct nlmsghdr *nlh;
+	struct netlink_getneigh_lle_cbdata cbdata;
+	int error;
+
+	if (nlm->nlmsg_len < sizeof (struct ndmsg)) {
+		return EINVAL;
+	}
+
+	m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
+	if (!m) {
+		return ENOBUFS;
+	}
+
+	struct ndmsg *ndm = (struct ndmsg *) nlmsg_data(nlm);
+
+	cbdata.nlm = nlm;
+	cbdata.m = m;
+	cbdata.family = ndm->ndm_family;
+	cbdata.state = ndm->ndm_state;
+
+	error = lltable_foreach(netlink_getneigh_lltable_cb, &cbdata);
+
+	if (!error) {
+		nlh = nlmsg_put(m, nlm->nlmsg_pid, nlm->nlmsg_seq, NLMSG_DONE, 0, nlm->nlmsg_flags);
+		netlink_dispatch(so, m);
+	} else {
+		m_free(m);
+	}
+
+	return error;
+}
+
 static int
 netlink_process_msg(struct mbuf *m, struct socket *so)
 {
@@ -639,7 +816,7 @@ netlink_process_msg(struct mbuf *m, struct socket *so)
 	len = m->M_dat.MH.MH_pkthdr.len;
 	if (len < sizeof(struct nlmsghdr))
 		senderr(EINVAL);
-	if ((m = m_pullup(m, sizeof(struct nlmsghdr))) == NULL)
+	if ((m = m_pullup(m, len)) == NULL)
 		senderr(ENOBUFS);
 	if (len != mtod(m, struct nlmsghdr *)->nlmsg_len)
 		senderr(EINVAL);
@@ -651,6 +828,9 @@ netlink_process_msg(struct mbuf *m, struct socket *so)
 			break;
 		case LINUX_RTM_GETADDR:
 			error = netlink_process_getaddr_msg(so, nlm);
+			break;
+		case LINUX_RTM_GETNEIGH:
+			error = netlink_process_getneigh_msg(so, nlm);
 			break;
 		default:
 			senderr(EOPNOTSUPP);
@@ -682,6 +862,15 @@ extern struct domain netlinkdomain;		/* or at least forward */
 static struct protosw netlinksw[] = {
 	initialize_with([] (protosw& x) {
 	x.pr_type =			SOCK_RAW;
+	x.pr_domain =		&netlinkdomain;
+	x.pr_flags =		PR_ATOMIC|PR_ADDR;
+	x.pr_output =		netlink_output;
+	x.pr_ctlinput =		raw_ctlinput;
+	x.pr_init =			raw_init;
+	x.pr_usrreqs =		&netlink_usrreqs;
+	}),
+	initialize_with([] (protosw& x) {
+	x.pr_type =			SOCK_DGRAM;
 	x.pr_domain =		&netlinkdomain;
 	x.pr_flags =		PR_ATOMIC|PR_ADDR;
 	x.pr_output =		netlink_output;

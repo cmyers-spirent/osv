@@ -497,3 +497,44 @@ DB_SHOW_ALL_COMMAND(lltables, db_show_all_lltables)
 	}
 }
 #endif
+
+/*
+ * Iterate over all lltables
+ */
+int lltable_foreach(int (*func)(struct lltable *llt, void *cbdata), void *cbdata)
+{
+	struct lltable *llt;
+	int error = 0;
+
+	LLTABLE_RLOCK();
+	SLIST_FOREACH(llt, &V_lltables, llt_link) {
+		if ((error = func(llt, cbdata)) != 0)
+			break;
+	}
+	LLTABLE_RUNLOCK();
+
+	return error;
+}
+
+/*
+ * Iterate over all llentries in the lltable
+ */
+int lltable_foreach_lle(struct lltable *llt, int (*func)(struct lltable *llt, struct llentry *lle, void *cbdata), void *cbdata)
+{
+	struct llentry *lle;
+	int i;
+	int error = 0;
+
+	for (i = 0; i < LLTBL_HASHTBL_SIZE; i++) {
+		LIST_FOREACH(lle, &llt->lle_head[i], lle_next) {
+			/* skip deleted entries */
+			if ((lle->la_flags & LLE_DELETED) == LLE_DELETED)
+				continue;
+			if ((error = func(llt, lle, cbdata)) != 0)
+				break;
+		}
+	}
+
+	return error;
+}
+
