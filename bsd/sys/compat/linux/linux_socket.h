@@ -91,13 +91,13 @@ struct l_cmsghdr {
 				((msg)->msg_controllen >= \
 				    sizeof(struct l_cmsghdr) ? \
 				    (struct l_cmsghdr *) \
-				        PTRIN((msg)->msg_control) : \
+				        ((msg)->msg_control) : \
 				    (struct l_cmsghdr *)(NULL))
 #define LINUX_CMSG_NXTHDR(msg, cmsg) \
 				((((char *)(cmsg) + \
 				    LINUX_CMSG_ALIGN((cmsg)->cmsg_len) + \
 				    sizeof(*(cmsg))) > \
-				    (((char *)PTRIN((msg)->msg_control)) + \
+				    (((char *)((msg)->msg_control)) + \
 				    (msg)->msg_controllen)) ? \
 				    (struct l_cmsghdr *) NULL : \
 				    (struct l_cmsghdr *)((char *)(cmsg) + \

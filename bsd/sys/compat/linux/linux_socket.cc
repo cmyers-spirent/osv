@@ -300,6 +300,16 @@ bsd_to_linux_sockopt_level(int level)
 }
 
 static int
+linux_to_bsd_sockopt_level(int level)
+{
+	switch (level) {
+	case LINUX_SOL_SOCKET:
+		return (SOL_SOCKET);
+	}
+	return (level);
+}
+
+static int
 linux_to_bsd_ip_sockopt(int opt)
 {
 
@@ -546,35 +556,71 @@ linux_sa_put(struct bsd_osockaddr *osa)
 	return (0);
 }
 
-#if 0
 static int
-linux_to_bsd_cmsg_type(int cmsg_type)
+linux_to_bsd_cmsg_type(int cmsg_level, int cmsg_type)
 {
-
-	switch (cmsg_type) {
-	case LINUX_SCM_RIGHTS:
-		return (SCM_RIGHTS);
-	case LINUX_SCM_CREDENTIALS:
-		return (SCM_CREDS);
+	switch(cmsg_level) {
+	case LINUX_SOL_SOCKET:
+		switch (cmsg_type) {
+#if 0
+		case LINUX_SCM_RIGHTS:
+			return (SCM_RIGHTS);
+		case LINUX_SCM_CREDENTIALS:
+			return (SCM_CREDS);
+#endif
+		case LINUX_SCM_TIMESTAMP:
+			return (SCM_TIMESTAMP);
+		}
+		break;
+	case IPPROTO_IP:
+		switch (cmsg_type) {
+		case IP_PKTINFO:
+			return cmsg_type;
+		}
+		break;
+#ifdef INET6
+	case IPPROTO_IPV6:
+		switch (cmsg_type) {
+		case IPV6_PKTINFO:
+			return cmsg_type;
+		}
+		break;
 	}
+#endif
 	return (-1);
 }
-#endif
 
 static int
-bsd_to_linux_cmsg_type(int cmsg_type)
+bsd_to_linux_cmsg_type(int cmsg_level, int cmsg_type)
 {
 
-	switch (cmsg_type) {
+	switch (cmsg_level) {
+	case SOL_SOCKET:
+		switch (cmsg_type) {
 #if 0
-	case SCM_RIGHTS:
-		return (LINUX_SCM_RIGHTS);
-	case SCM_CREDS:
-		return (LINUX_SCM_CREDENTIALS);
+		case SCM_RIGHTS:
+			return (LINUX_SCM_RIGHTS);
+		case SCM_CREDS:
+			return (LINUX_SCM_CREDENTIALS);
 #endif
-	case SCM_TIMESTAMP:
-		return (LINUX_SCM_TIMESTAMP);
+		case SCM_TIMESTAMP:
+			return (LINUX_SCM_TIMESTAMP);
+		}
+		break;
+	case IPPROTO_IP:
+		switch (cmsg_type) {
+		case IP_PKTINFO:
+			return cmsg_type;
+		}
+		break;
+	case IPPROTO_IPV6:
+		switch (cmsg_type) {
+		case IPV6_PKTINFO:
+			return cmsg_type;
+		}
+		break;
 	}
+
 	return (-1);
 }
 
@@ -652,8 +698,11 @@ linux_sendit(int s, struct msghdr *mp, int flags,
 
 	if (mp->msg_name != NULL) {
 		error = linux_getsockaddr(&to, (const bsd_osockaddr*)mp->msg_name, mp->msg_namelen);
-		if (error)
+		if (error) {
+			if (control)
+				m_freem(control);
 			return (error);
+		}
 		mp->msg_name = to;
 	} else
 		to = NULL;
@@ -1045,14 +1094,15 @@ int
 linux_sendmsg(int s, struct l_msghdr* linux_msg, int flags, ssize_t* bytes)
 {
 #if 0
-	struct cmsghdr *cmsg;
-	struct mbuf *control;
-	struct iovec *iov;
-	socklen_t datalen;
-	struct bsd_sockaddr *sa;
 	sa_family_t sa_family;
-	void *data;
+	struct bsd_sockaddr *sa;
+	struct iovec *iov;
 #endif
+	struct l_cmsghdr *linux_cmsg;
+	struct cmsghdr *cmsg;
+	struct mbuf *control = 0;
+	socklen_t datalen;
+	void *data;
 
 	struct msghdr msg;
 	int error;
@@ -1064,6 +1114,7 @@ linux_sendmsg(int s, struct l_msghdr* linux_msg, int flags, ssize_t* bytes)
 	 * order to handle this case.  This should be checked, but allows the
 	 * Linux ping to work.
 	 */
+
 	if (linux_msg->msg_control != NULL && linux_msg->msg_controllen == 0)
 		linux_msg->msg_control = NULL;
 
@@ -1071,96 +1122,120 @@ linux_sendmsg(int s, struct l_msghdr* linux_msg, int flags, ssize_t* bytes)
 	if (error)
 		return (error);
 
-	/* FIXME: OSv - cmsgs translation is done credentials and rights,
-	   we ignore those in OSv. */
+	/* Linux to BSD cmsgs translation */
+	if ((linux_cmsg = LINUX_CMSG_FIRSTHDR(linux_msg)) != NULL) {
+		uint8_t cmsg_buf[CMSG_HDRSZ];
+
 #if 0
-	if ((ptr_cmsg = LINUX_CMSG_FIRSTHDR(&linux_msg)) != NULL) {
+		// TODO: This causes unnecessary malloc/free
+		//       Does this really need to be done?
 		error = kern_getsockname(td, args->s, &sa, &datalen);
 		if (error)
 			goto bad;
 		sa_family = sa->sa_family;
-		free(sa, M_SONAME);
+		free(sa);
+#endif
 
+		cmsg = (struct cmsghdr*) cmsg_buf;
 		error = ENOBUFS;
-		cmsg = malloc(CMSG_HDRSZ, M_TEMP, M_WAITOK | M_ZERO);
 		control = m_get(M_WAIT, MT_CONTROL);
 		if (control == NULL)
 			goto bad;
 
 		do {
-			error = copyin(ptr_cmsg, &linux_cmsg,
-			    sizeof(struct l_cmsghdr));
-			if (error)
-				goto bad;
-
 			error = EINVAL;
-			if (linux_cmsg.cmsg_len < sizeof(struct l_cmsghdr))
+			if (linux_cmsg->cmsg_len < sizeof(struct l_cmsghdr))
 				goto bad;
 
-			/*
-			 * Now we support only SCM_RIGHTS and SCM_CRED,
-			 * so return EINVAL in any other cmsg_type
-			 */
 			cmsg->cmsg_type =
-			    linux_to_bsd_cmsg_type(linux_cmsg.cmsg_type);
+			    linux_to_bsd_cmsg_type(linux_cmsg->cmsg_level, linux_cmsg->cmsg_type);
 			cmsg->cmsg_level =
-			    linux_cmsg.cmsg_level;
-			if (cmsg->cmsg_type linux_sendmsg== -1
-			    || cmsg->cmsg_level != SOL_SOCKET)
+                            linux_to_bsd_sockopt_level(linux_cmsg->cmsg_level);
+			if (cmsg->cmsg_type == -1)
 				goto bad;
 
-			/*
-			 * Some applications (e.g. pulseaudio) attempt to
-			 * send ancillary data even if the underlying protocol
-			 * doesn't support it which is not allowed in the
-			 * FreeBSD system call interface.
-			 */
-			if (sa_family != AF_UNIX)
-				continue;
+			data = LINUX_CMSG_DATA(linux_cmsg);
+			datalen = linux_cmsg->cmsg_len - L_CMSG_HDRSZ;
 
-			data = LINUX_CMSG_DATA(ptr_cmsg);
-			datalen = linux_cmsg.cmsg_len - L_CMSG_HDRSZ;
-
-			switch (cmsg->cmsg_type)
-			{
-			case SCM_RIGHTS:
-				break;
-
-			case SCM_CREDS:
-				data = &cmcred;
-				datalen = sizeof(cmcred);
-
+			if (cmsg->cmsg_level == SOL_SOCKET) {
+#if 0
 				/*
-				 * The lower levels will fill in the structure
+				 * Some applications (e.g. pulseaudio) attempt to
+				 * send ancillary data even if the underlying protocol
+				 * doesn't support it which is not allowed in the
+				 * FreeBSD system call interface.
 				 */
-				bzero(data, datalen);
-				break;
+				if (sa_family != AF_UNIX)
+					continue;
+
+				switch (cmsg->cmsg_type) {
+				case SCM_RIGHTS:
+					break;
+
+				case SCM_CREDS:
+					data = &cmcred;
+					datalen = sizeof(cmcred);
+
+					/*
+					 * The lower levels will fill in the structure
+					 */
+					bzero(data, datalen);
+					break;
+				default:
+					goto bad;
+				}
+#else
+				goto bad;
+#endif
+			}
+			else if (cmsg->cmsg_level == IPPROTO_IP) {
+				switch(cmsg->cmsg_type) {
+				case IP_PKTINFO:
+					break;
+				default:
+					goto bad;
+				}
+			}
+#ifdef INET6
+			else if (cmsg->cmsg_level == IPPROTO_IPV6) {
+				switch(cmsg->cmsg_type) {
+				case IPV6_PKTINFO:
+					break;
+				default:
+					goto bad;
+				}
+			}
+#endif /* INET6 */
+			else {
+				goto bad;
 			}
 
 			cmsg->cmsg_len = CMSG_LEN(datalen);
 
 			error = ENOBUFS;
-			if (!m_append(control, CMSG_HDRSZ, (c_caddr_t)cmsg))
+			if (!m_append(control, CMSG_HDRSZ, (c_caddr_t)cmsg) ||
+			    !m_append(control, datalen, (c_caddr_t)data)) {
 				goto bad;
-			if (!m_append(control, datalen, (c_caddr_t)data))
-				goto bad;
-		} while ((ptr_cmsg = LINUX_CMSG_NXTHDR(&linux_msg, ptr_cmsg)));
+			}
+
+		} while ((linux_cmsg = LINUX_CMSG_NXTHDR(linux_msg, linux_cmsg)));
 
 		if (m_length(control, NULL) == 0) {
 			m_freem(control);
 			control = NULL;
 		}
 	}
-#endif
 
-	error = linux_sendit(s, &msg, flags, NULL, bytes);
-
-#if 0
+	error = linux_sendit(s, &msg, flags, control, bytes);
+	control = NULL; /* transfered ownership of control mbuf */
 bad:
+#if 0
 	free(iov);
 	if (cmsg)
 		free(cmsg);
 #endif
+	if (control)
+		m_freem(control);
 	return (error);
 }
 
@@ -1234,12 +1309,10 @@ linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 
 		while (cm != NULL) {
 			linux_cmsg->cmsg_type =
-			    bsd_to_linux_cmsg_type(cm->cmsg_type);
+			    bsd_to_linux_cmsg_type(cm->cmsg_level, cm->cmsg_type);
 			linux_cmsg->cmsg_level =
 			    bsd_to_linux_sockopt_level(cm->cmsg_level);
-			if (linux_cmsg->cmsg_type == -1
-			    || cm->cmsg_level != SOL_SOCKET)
-			{
+			if (linux_cmsg->cmsg_type == -1) {
 				error = EINVAL;
 				goto bad;
 			}
@@ -1247,51 +1320,76 @@ linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 			data = CMSG_DATA(cm);
 			datalen = (caddr_t)cm + cm->cmsg_len - (caddr_t)data;
 
-			switch (cm->cmsg_type)
-			{
+			if (cm->cmsg_level == SOL_SOCKET) {
+				switch (cm->cmsg_type) {
 #if 0
-			case SCM_RIGHTS:
-				if (args->flags & LINUX_MSG_CMSG_CLOEXEC) {
-					fds = datalen / sizeof(int);
-					fdp = data;
-					for (i = 0; i < fds; i++) {
-						fd = *fdp++;
-						(void)kern_fcntl(td, fd,
-						    F_SETFD, FD_CLOEXEC);
+				case SCM_RIGHTS:
+					if (args->flags & LINUX_MSG_CMSG_CLOEXEC) {
+						fds = datalen / sizeof(int);
+						fdp = data;
+						for (i = 0; i < fds; i++) {
+							fd = *fdp++;
+							(void)kern_fcntl(td, fd,
+							    F_SETFD, FD_CLOEXEC);
+						}
 					}
-				}
-				break;
+					break;
 
-			case SCM_CREDS:
-				/*
-				 * Currently LOCAL_CREDS is never in
-				 * effect for Linux so no need to worry
-				 * about sockcred
-				 */
-				if (datalen != sizeof(*cmcred)) {
-					error = EMSGSIZE;
-					goto bad;
-				}
-				cmcred = (struct cmsgcred *)data;
-				bzero(&linux_ucred, sizeof(linux_ucred));
-				linux_ucred.pid = cmcred->cmcred_pid;
-				linux_ucred.uid = cmcred->cmcred_uid;
-				linux_ucred.gid = cmcred->cmcred_gid;
-				data = &linux_ucred;
-				datalen = sizeof(linux_ucred);
-				break;
+				case SCM_CREDS:
+					/*
+					 * Currently LOCAL_CREDS is never in
+					 * effect for Linux so no need to worry
+					 * about sockcred
+					 */
+					if (datalen != sizeof(*cmcred)) {
+						error = EMSGSIZE;
+						goto bad;
+					}
+					cmcred = (struct cmsgcred *)data;
+					bzero(&linux_ucred, sizeof(linux_ucred));
+					linux_ucred.pid = cmcred->cmcred_pid;
+					linux_ucred.uid = cmcred->cmcred_uid;
+					linux_ucred.gid = cmcred->cmcred_gid;
+					data = &linux_ucred;
+					datalen = sizeof(linux_ucred);
+					break;
 #endif
-			case SCM_TIMESTAMP:
-				if (datalen != sizeof(struct timeval)) {
-					error = EMSGSIZE;
+				case SCM_TIMESTAMP:
+					if (datalen != sizeof(struct timeval)) {
+						error = EMSGSIZE;
+						goto bad;
+					}
+					ftmvl = (struct timeval *)data;
+					ltmvl.tv_sec = ftmvl->tv_sec;
+					ltmvl.tv_usec = ftmvl->tv_usec;
+					data = &ltmvl;
+					datalen = sizeof(ltmvl);
+					break;
+				default:
+					error = EINVAL;
 					goto bad;
 				}
-				ftmvl = (struct timeval *)data;
-				ltmvl.tv_sec = ftmvl->tv_sec;
-				ltmvl.tv_usec = ftmvl->tv_usec;
-				data = &ltmvl;
-				datalen = sizeof(ltmvl);
-				break;
+			}
+			else if (cm->cmsg_level == IPPROTO_IP) {
+				switch (cm->cmsg_type) {
+				case IP_PKTINFO:
+					break;
+				default:
+					error = EINVAL;
+					goto bad;
+				}
+			}
+			else if (cm->cmsg_level == IPPROTO_IPV6) {
+				switch (cm->cmsg_type) {
+				case IPV6_PKTINFO:
+					break;
+				default:
+					error = EINVAL;
+					goto bad;
+				}
+			} else {
+				error = EINVAL;
+				goto bad;
 			}
 
 			if (outlen + LINUX_CMSG_LEN(datalen) >
