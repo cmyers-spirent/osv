@@ -48,11 +48,12 @@ namespace po = boost::program_options;
 //    - meta-data.json (not mandatory)
 //    - user-data
 //
-// config_disk() checks whether we have a second disk (/dev/vblk1) with
+// config_disk() checks whether we have a second disk (/dev/vblkX) with
 // ISO image, and if there is, it copies the configuration file from
 // the user user-data file to the given file.
 // config_disk() returns true if it has successfully read the configuration
-// into the requested file.
+// into the requested file. It tries to get configuration from first few
+// vblk devices, namely vblk1 to vblk10.
 //
 // OSv implementation limitations:
 // The /meta-data file is currently ignored.
@@ -69,11 +70,11 @@ static bool config_disk(const char* outfile) {
         "/ec2/latest/user-data",       // ConfigDrive EC2
     };
 
-    for (int i=1; i<=10; ++i) {
+    for (int ii=1; ii<=10; ii++) {
+        char disk[20];
         struct stat sb;
-        char disk[64];
 
-        snprintf(disk, sizeof(disk), "/dev/vblk%d", i);
+        snprintf(disk, sizeof(disk), "/dev/vblk%d", ii);
 
         if (stat(disk, &sb) != 0) {
             continue;
