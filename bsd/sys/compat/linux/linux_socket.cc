@@ -1245,8 +1245,6 @@ struct linux_recvmsg_args {
 	int flags;
 };
 
-/* FIXME: OSv - flags are ignored, the flags
- * inside the msghdr are used instead */
 int
 linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 {
@@ -1268,6 +1266,15 @@ linux_recvmsg(int s, struct l_msghdr *linux_msg, int flags, ssize_t* bytes)
 	error = linux_to_bsd_msghdr(&msg, linux_msg);
 	if (error)
 		return (error);
+
+	/*
+	 * Set msg_flags from flags parameter like sys_recvmsg() for standard behavior.
+ 	 * msg_flags in msghdr passed to kern_recvit() are used as in/out.
+	 * msg_flags in msghdr passed to recvmsg() are used for out only and the
+	 * flags paramter is used for in.
+	 *
+	 */
+        msg.msg_flags = linux_to_bsd_msg_flags(flags);
 
 	if (msg.msg_name) {
 		error = linux_to_bsd_sockaddr((struct bsd_sockaddr *)msg.msg_name,
