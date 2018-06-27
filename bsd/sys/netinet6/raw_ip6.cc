@@ -663,7 +663,7 @@ rip6_attach(struct socket *so, int proto, struct thread *td)
 		free(filter);
 		return (ENOMEM);
 	}
-	/* soreserve() must be done faer inpcb i screated which sets up the socket so_mtx */
+	/* soreserve() must be done after inpcb is created which sets up the socket so_mtx */
 	error = soreserve(so, rip_sendspace, rip_recvspace);
 	if (error) {
 		in_pcbdetach(inp);
