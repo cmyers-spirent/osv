@@ -163,6 +163,10 @@ extern int tick;
     #define INET (1)
 #endif
 
+#ifndef INET6
+    #define INET6 (1)
+#endif
+
 #ifdef _KERNEL
 
 #define panic(...) do { tprintf_e("bsd-panic", __VA_ARGS__); \
@@ -191,7 +195,14 @@ size_t strlcpy(char *dst, const char *src, size_t siz);
     #define NULL (0)
 #endif
 
-#define KASSERT(exp,msg) assert(exp)
+#define KASSERT_PRINT(...) tprintf_e("bsd-kassert", __VA_ARGS__)
+#define KASSERT(exp, msg) \
+    do {                                        \
+        if (!(exp)) {                           \
+            KASSERT_PRINT msg ;                 \
+            assert(exp);                        \
+        }                                       \
+    } while(0)
 
 #define bsd_min(a, b) ((a) < (b) ? (a) : (b))
 #define bsd_max(a, b) ((a) > (b) ? (a) : (b))

@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "cloud-init.hh"
+#include "network-module.hh"
 #include "files-module.hh"
 #include "server-module.hh"
 #include "cassandra-module.hh"
@@ -24,59 +25,84 @@ using namespace std;
 using namespace init;
 namespace po = boost::program_options;
 
-// config_disk() allows to use NoCloud VM configuration method - see
+// config_disk() allows to use NoCloud and ConfigDrive VM configuration method - see
 // http://cloudinit.readthedocs.io/en/0.7.9/topics/datasources/nocloud.html.
+// http://cloudinit.readthedocs.io/en/0.7.9/topics/datasources/configdrive.html
+//
 // NoCloud method provides two files with cnfiguration data (/user-data and
 // /meta-data) on a disk. The disk is required to have label "cidata".
 // It can contain ISO9660 or FAT filesystem.
 //
+// ConfigDrive (version 2) method uses an unpartitioned VFAT or ISO9660 disk 
+// with files.
+// openstack/
+//  - 2012-08-10/ or latest/
+//    - meta_data.json
+//    - user_data (not mandatory)
+//  - content/
+//    - 0000 (referenced content files)
+//    - 0001
+//    - ....
+// ec2
+//  - latest/
+//    - meta-data.json (not mandatory)
+//    - user-data
+//
 // config_disk() checks whether we have a second disk (/dev/vblkX) with
 // ISO image, and if there is, it copies the configuration file from
-// /user-data to the given file.
+// the user user-data file to the given file.
 // config_disk() returns true if it has successfully read the configuration
-// into the requested file. It triest to get configuratioe from first few
+// into the requested file. It tries to get configuration from first few
 // vblk devices, namely vblk1 to vblk10.
 //
 // OSv implementation limitations:
 // The /meta-data file is currently ignored.
 // Only ISO9660 filesystem is supported.
-// The mandatory "cidata" volume label is not checked.
+// The mandatory "cidata" (NoCloud) and "config-2" (ConfigDrive) volume labels are not checked.
 //
 // Example ISO image can be created by running
 // cloud-localds cloud-init.img cloud-init.yaml
 // The cloud-localds command is provided by cloud-utils package (fedora).
 static bool config_disk(const char* outfile) {
+    const char * userdata_file_paths[] {
+        "/user-data",                  // NoCloud
+        "/openstack/latest/user_data", // ConfigDrive OpenStack
+        "/ec2/latest/user-data",       // ConfigDrive EC2
+    };
+
     for (int ii=1; ii<=10; ii++) {
         char disk[20];
-        char srcfile[] = "/user-data";
         struct stat sb;
-        int ret;
-        int app_ret = -1;
 
         snprintf(disk, sizeof(disk), "/dev/vblk%d", ii);
-        ret = stat(disk, &sb);
-        if (ret != 0) {
+
+        if (stat(disk, &sb) != 0) {
             continue;
         }
 
-        std::vector<std::string> cmd = {"/usr/bin/iso-read.so", "-e", srcfile, "-o", outfile, disk};
-        osv::run(cmd[0], cmd, &app_ret);
-        if (app_ret != 0) {
-            debug("cloud-init: warning, %s exited with code %d (%s is not ISO image?)\n", cmd[0], app_ret, disk);
-            continue;
+        debug("cloud-init: checking disk %s\n", disk);
+
+        for (auto & srcfile : userdata_file_paths) {
+            int app_ret = -1;
+            std::vector<std::string> cmd = {"/usr/bin/iso-read.so", "-e", srcfile , "-o", outfile, disk};
+            osv::run(cmd[0], cmd, &app_ret);
+            if (app_ret != 0) {
+                debug("cloud-init: warning, %s exited with code %d (%s is not ISO image?)\n", cmd[0], app_ret, disk);
+                continue;
+            }
+            if (stat(outfile, &sb) != 0) {
+                debug("cloud-init: stat(%s) failed, errno=%d\n", outfile, errno);
+                continue;
+            }
+            if ((sb.st_mode & S_IFMT) != S_IFREG) {
+                debug("cloud-init: %s is not a file\n", outfile);
+                continue;
+            }
+            debug("cloud-init: copied file %s -> %s from ISO image %s\n", srcfile, outfile, disk);
+            return true;
         }
-        ret = stat(outfile, &sb);
-        if (ret != 0) {
-            debug("cloud-init: disk %s, stat(%s) failed, errno=%d\n", disk, outfile, errno);
-            continue;
-        }
-        if ((sb.st_mode & S_IFMT) != S_IFREG) {
-            debug("cloud-init: disk %s, %s is not a file\n", disk, outfile);
-            return false;
-        }
-        debug("cloud-init: copied file %s -> %s from ISO image %s\n", srcfile, outfile, disk);
-        return true;
     }
+
     return false;
 }
 
@@ -106,6 +132,7 @@ int main(int argc, char* argv[])
         osvinit init(config.count("skip-error") > 0, config.count("force-probe") > 0);
         auto scripts = make_shared<script_module>();
         init.add_module(scripts);
+        init.add_module(make_shared<network_module>());
         init.add_module(make_shared<mount_module>());
         init.add_module(make_shared<hostname_module>());
         init.add_module(make_shared<files_module>());

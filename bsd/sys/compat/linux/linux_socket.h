@@ -91,13 +91,13 @@ struct l_cmsghdr {
 				((msg)->msg_controllen >= \
 				    sizeof(struct l_cmsghdr) ? \
 				    (struct l_cmsghdr *) \
-				        PTRIN((msg)->msg_control) : \
+				        ((msg)->msg_control) : \
 				    (struct l_cmsghdr *)(NULL))
 #define LINUX_CMSG_NXTHDR(msg, cmsg) \
 				((((char *)(cmsg) + \
 				    LINUX_CMSG_ALIGN((cmsg)->cmsg_len) + \
 				    sizeof(*(cmsg))) > \
-				    (((char *)PTRIN((msg)->msg_control)) + \
+				    (((char *)((msg)->msg_control)) + \
 				    (msg)->msg_controllen)) ? \
 				    (struct l_cmsghdr *) NULL : \
 				    (struct l_cmsghdr *)((char *)(cmsg) + \
@@ -115,6 +115,8 @@ struct l_cmsghdr {
 #define	LINUX_AF_IPX		4
 #define	LINUX_AF_APPLETALK	5
 #define	LINUX_AF_INET6		10
+#define LINUX_AF_NETLINK	16
+#define LINUX_AF_PACKET     17
 
 /* Supported socket types */
 
@@ -150,5 +152,62 @@ struct l_ucred {
 #define	LINUX_IP_MULTICAST_LOOP		34
 #define	LINUX_IP_ADD_MEMBERSHIP		35
 #define	LINUX_IP_DROP_MEMBERSHIP	36
+
+
+#define LINUX_IPV6_ADDRFORM		1
+#define LINUX_IPV6_2292PKTINFO		2
+#define LINUX_IPV6_2292HOPOPTS		3
+#define LINUX_IPV6_2292DSTOPTS		4
+#define LINUX_IPV6_2292RTHDR		5
+#define LINUX_IPV6_2292PKTOPTIONS	6
+#define LINUX_IPV6_CHECKSUM		7
+#define LINUX_IPV6_2292HOPLIMIT		8
+
+#define LINUX_SCM_SRCRT			LINUX_IPV6_RXSRCRT
+
+#define LINUX_IPV6_NEXTHOP		9
+#define LINUX_IPV6_AUTHHDR		10
+#define LINUX_IPV6_UNICAST_HOPS		16
+#define LINUX_IPV6_MULTICAST_IF		17
+#define LINUX_IPV6_MULTICAST_HOPS	18
+#define LINUX_IPV6_MULTICAST_LOOP	19
+#define LINUX_IPV6_JOIN_GROUP		20
+#define LINUX_IPV6_LEAVE_GROUP		21
+#define LINUX_IPV6_ROUTER_ALERT		22
+#define LINUX_IPV6_MTU_DISCOVER		23
+#define LINUX_IPV6_MTU			24
+#define LINUX_IPV6_RECVERR		25
+#define LINUX_IPV6_V6ONLY		26
+#define LINUX_IPV6_JOIN_ANYCAST		27
+#define LINUX_IPV6_LEAVE_ANYCAST	28
+#define LINUX_IPV6_IPSEC_POLICY		34
+#define LINUX_IPV6_XFRM_POLICY		35
+
+/* Advanced API (RFC3542) (1).  */
+#define LINUX_IPV6_RECVPKTINFO		49
+#define LINUX_IPV6_PKTINFO		50
+#define LINUX_IPV6_RECVHOPLIMIT		51
+#define LINUX_IPV6_HOPLIMIT		52
+#define LINUX_IPV6_RECVHOPOPTS		53
+#define LINUX_IPV6_HOPOPTS		54
+#define LINUX_IPV6_RTHDRDSTOPTS		55
+#define LINUX_IPV6_RECVRTHDR		56
+#define LINUX_IPV6_RTHDR		57
+#define LINUX_IPV6_RECVDSTOPTS		58
+#define LINUX_IPV6_DSTOPTS		59
+#define LINUX_IPV6_RECVPATHMTU		60
+#define LINUX_IPV6_PATHMTU		61
+#define LINUX_IPV6_DONTFRAG		62
+
+/* Advanced API (RFC3542) (2).  */
+#define LINUX_IPV6_RECVTCLASS		66
+#define LINUX_IPV6_TCLASS		67
+
+/* Obsolete synonyms for the above.  */
+#define LINUX_IPV6_ADD_MEMBERSHIP	LINUX_IPV6_JOIN_GROUP
+#define LINUX_IPV6_DROP_MEMBERSHIP	LINUX_IPV6_LEAVE_GROUP
+#define LINUX_IPV6_RXHOPOPTS		LINUX_IPV6_HOPOPTS
+#define LINUX_IPV6_RXDSTOPTS		LINUX_IPV6_DSTOPTS
+
 
 #endif /* _LINUX_SOCKET_H_ */

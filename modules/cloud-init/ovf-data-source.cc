@@ -16,9 +16,12 @@
 using boost::property_tree::ptree;
 
 const std::string ovf::mgmt_if     = "eth0";
-const std::string ovf::ip_key      = "ip_address";
-const std::string ovf::netmask_key = "subnet_mask";
-const std::string ovf::gateway_key = "default_gateway";
+const std::string ovf::ipv4_key      = "ip_address";
+const std::string ovf::ipv4_netmask_key = "subnet_mask";
+const std::string ovf::ipv4_gateway_key = "default_gateway";
+const std::string ovf::ipv6_key      = "ipv6_address";
+const std::string ovf::ipv6_netmask_key = "ipv6_subnet_mask";
+const std::string ovf::ipv6_gateway_key = "ipv6_default_gateway";
 
 std::string ovf::launch_index()
 {
@@ -112,29 +115,53 @@ std::string ovf::base64_decode(const std::string &s)
 bool ovf::maybe_config_interface()
 {
    /* Check for IP, netmask, and gateway */
-    auto ip = _properties.find(ip_key);
-    auto netmask = _properties.find(netmask_key);
-    auto gateway = _properties.find(gateway_key);
     auto end = _properties.end();
+    auto ipv4 = _properties.find(ipv4_key);
+    auto ipv4_netmask = _properties.find(ipv4_netmask_key);
+    auto ipv4_gateway = _properties.find(ipv4_gateway_key);
+    auto ipv6 = _properties.find(ipv6_key);
+    auto ipv6_netmask = _properties.find(ipv6_netmask_key);
+    auto ipv6_gateway = _properties.find(ipv6_gateway_key);
 
-    if (ip != end && netmask != end) {
-        auto err = osv::start_if(mgmt_if, ip->second, netmask->second);
+    if (ipv4 != end && ipv4_netmask != end) {
+        auto err = osv::if_add_addr(mgmt_if, ipv4->second, ipv4_netmask->second);
         if (err) {
             debug("Unable to configure " + std::string(mgmt_if)
-                  + " with ip_address " + ip->second
-                  + " and subnet_mask " + netmask->second
+                  + " with ip_address " + ipv4->second
+                  + " and subnet_mask " + ipv4_netmask->second
                   + ": " + strerror(err) + "\n");
             return false;
         } else {
-            debug("Configured " + ip->second + "/" + netmask->second
+            debug("Configured " + ipv4->second + "/" + ipv4_netmask->second
                   + " on " + std::string(mgmt_if) + ".\n");
         }
 
-        if (gateway != end) {
+        if (ipv4_gateway != end) {
             /* XXX: we don't know if this void function succeeds or not... :(  */
             osv_route_add_network("0.0.0.0",
                                   "0.0.0.0",
-                                  gateway->second.c_str());
+                                  ipv4_gateway->second.c_str());
+        }
+    }
+
+    if (ipv6 != end && ipv6_netmask != end) {
+        auto err = osv::if_add_addr(mgmt_if, ipv6->second, ipv6_netmask->second);
+        if (err) {
+            debug("Unable to configure " + std::string(mgmt_if)
+                  + " with ip_address " + ipv6->second
+                  + " and subnet_mask " + ipv6_netmask->second
+                  + ": " + strerror(err) + "\n");
+            return false;
+        } else {
+            debug("Configured " + ipv6->second + "/" + ipv6_netmask->second
+                  + " on " + std::string(mgmt_if) + ".\n");
+        }
+
+        if (ipv6_gateway != end) {
+            /* XXX: we don't know if this void function succeeds or not... :(  */
+            osv_route_add_network("::",
+                                  "::",
+                                  ipv6_gateway->second.c_str());
         }
     }
 
