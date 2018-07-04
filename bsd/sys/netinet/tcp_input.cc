@@ -722,12 +722,16 @@ findpcb:
 	}
 #endif
 
+#ifdef INET6
 	if (isipv6) {
 		inp = in6_pcblookup_mbuf(&V_tcbinfo, &ip6->ip6_src,
 			th->th_sport, &ip6->ip6_dst, th->th_dport,
 			INPLOOKUP_WILDCARD | INPLOOKUP_LOCKPCB,
 			m->M_dat.MH.MH_pkthdr.rcvif, m);
-	} else {
+	}
+	else
+#endif
+	{
 		inp = in_pcblookup_mbuf(&V_tcbinfo, ip->ip_src,
 			th->th_sport, ip->ip_dst, th->th_dport,
 			INPLOOKUP_WILDCARD | INPLOOKUP_LOCKPCB,

@@ -20,9 +20,13 @@
 #include <boost/test/unit_test.hpp>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 
-#define HAS_INET6
+#ifdef __OSV__
+#include <bsd/porting/netport.h> // Get INET6 
+#else
+#define INET6
+#endif
 
-#ifndef HAS_INET6
+#ifndef INET6
 
 /*
  * This is a test for OSv's IPv6 non-support :-) Although we do not support
@@ -238,5 +242,5 @@ BOOST_AUTO_TEST_CASE(test_ipv6_clients_are_not_reset_when_backlog_is_full_and_th
     close(listen_s);
 }
 
-#endif
+#endif /* INET6 */
 
