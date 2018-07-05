@@ -157,6 +157,8 @@ nd6_init(void)
 	/* initialization of the default router list */
 	TAILQ_INIT(&V_nd_defrouter);
 
+	nd6_dad_init();
+
 	/* start timer */
 	/* TODO: Verify this callout is MPSAFE
          *       nd6_slowtimo() iterates trhough V_ifnet list holding the IFNET_RLOCK
