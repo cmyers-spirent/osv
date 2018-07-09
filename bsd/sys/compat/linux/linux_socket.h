@@ -116,7 +116,7 @@ struct l_cmsghdr {
 #define	LINUX_AF_APPLETALK	5
 #define	LINUX_AF_INET6		10
 #define LINUX_AF_NETLINK	16
-#define LINUX_AF_PACKET     17
+#define LINUX_AF_PACKET		17
 
 /* Supported socket types */
 
@@ -141,11 +141,25 @@ struct l_ucred {
 	uint32_t	gid;
 };
 
+struct l_in_addr {
+	uint32_t	s_addr;
+};
+
+struct l_in_pktinfo {
+	l_uint			ipi_ifindex;
+	struct l_in_addr	ipi_spec_dst;
+	struct l_in_addr	ipi_addr;
+};
+
 /* Socket options */
 #define	LINUX_IP_TOS		1
 #define	LINUX_IP_TTL		2
 #define	LINUX_IP_HDRINCL	3
 #define	LINUX_IP_OPTIONS	4
+#define LINUX_IP_ROUTER_ALERT	5
+#define LINUX_IP_RECVOPTS	6
+#define LINUX_IP_RETOPTS	7
+#define LINUX_IP_PKTINFO	8
 
 #define	LINUX_IP_MULTICAST_IF		32
 #define	LINUX_IP_MULTICAST_TTL		33

@@ -163,7 +163,7 @@ extern int tick;
     #define INET (1)
 #endif
 
-#ifndef INET6
+#if defined(CONF_INET6) && (CONF_INET6 != 0)
     #define INET6 (1)
 #endif
 

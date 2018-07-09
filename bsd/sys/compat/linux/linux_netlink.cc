@@ -603,6 +603,7 @@ netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 				error = ENOBUFS;
 				goto done;
 			}
+#ifdef INET6
 			if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET6){
 				// FreeBSD embeds the IPv6 scope ID in the IPv6 address
 				// so need to extract and clear it before returning it.
@@ -624,7 +625,10 @@ netlink_process_getaddr_msg(struct socket *so, struct nlmsghdr *nlm)
 					error = ENOBUFS;
 					goto done;
 				}
-			} else {
+			}
+			else
+#endif
+			{
 				if (nla_put_sockaddr(m, IFA_ADDRESS, ifa->ifa_addr) ||
 					nla_put_sockaddr(m, IFA_BROADCAST, ifa->ifa_broadaddr)){
 					error = ENOBUFS;
@@ -651,24 +655,32 @@ done:
 	return (error);
 }
 
-
-static uint16_t lle_state_to_ndm_state(int state)
+static uint16_t lle_state_to_ndm_state(int family, int state)
 {
-	switch(state) {
-	case ND6_LLINFO_INCOMPLETE:
-		return NUD_INCOMPLETE;
-	case ND6_LLINFO_REACHABLE:
-		return NUD_REACHABLE;
-	case ND6_LLINFO_STALE:
-		return NUD_STALE;
-	case ND6_LLINFO_DELAY:
-		return NUD_DELAY;
-	case ND6_LLINFO_PROBE:
-		return NUD_PROBE;
-	case ND6_LLINFO_NOSTATE:
-	default:
-		return 0;	
+#ifdef INET6
+	if (family == AF_INET6) {
+		switch(state) {
+		case ND6_LLINFO_INCOMPLETE:
+			return NUD_INCOMPLETE;
+		case ND6_LLINFO_REACHABLE:
+			return NUD_REACHABLE;
+		case ND6_LLINFO_STALE:
+			return NUD_STALE;
+		case ND6_LLINFO_DELAY:
+			return NUD_DELAY;
+		case ND6_LLINFO_PROBE:
+			return NUD_PROBE;
+		case ND6_LLINFO_NOSTATE:
+		default:
+			return 0;
+		}
 	}
+#endif
+	if (family == AF_INET) {
+		return NUD_REACHABLE;
+	}
+
+	return 0;
 }
 
 static int netlink_bsd_to_linux_family(int family)
@@ -676,8 +688,10 @@ static int netlink_bsd_to_linux_family(int family)
 	switch(family) {
 	case AF_INET:
 		return LINUX_AF_INET;
+#ifdef INET6
 	case AF_INET6:
 		return LINUX_AF_INET6;
+#endif
 	default:
 		return -1;
 	}
@@ -694,8 +708,8 @@ static int
 netlink_getneigh_lle_cb(struct lltable *llt, struct llentry *lle, void *data)
 {
 	struct netlink_getneigh_lle_cbdata *cbdata = (struct netlink_getneigh_lle_cbdata *) data;
-	int ndm_state = lle_state_to_ndm_state(lle->ln_state);
 	int ndm_family = netlink_bsd_to_linux_family(llt->llt_af);
+	int ndm_state = lle_state_to_ndm_state(llt->llt_af, lle->ln_state);
 
 	if (cbdata->family && cbdata->family != ndm_family)
 		return 0;

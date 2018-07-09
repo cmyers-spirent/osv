@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD: stable/9/sys/netinet6/nd6_nbr.c 240305 2012-09-10 11:38:02Z 
 #include <bsd/sys/sys/malloc.h>
 #include <bsd/sys/sys/lock.h>
 #include <bsd/porting/rwlock.h>
+#include <bsd/porting/sync_stub.h>
 #include <bsd/sys/sys/mbuf.h>
 #include <bsd/sys/sys/socket.h>
 //#include <sys/sockio.h>
@@ -1183,14 +1184,31 @@ struct dadq {
 };
 
 static VNET_DEFINE(TAILQ_HEAD(, dadq), dadq);
-VNET_DEFINE(int, dad_init) = 0;
 #define	V_dadq				VNET(dadq)
-#define	V_dad_init			VNET(dad_init)
+
+struct mtx dadqlock;
+
+#define DADQ_LOCK_INIT()        mtx_init(&dadqlock, "dadqlock", NULL, MTX_DEF);
+#define DADQ_LOCK()             mtx_lock(&dadqlock)
+#define DADQ_TRYLOCK()          mtx_trylock(&dadqlock)
+#define DADQ_LOCK_ASSERT()      mtx_assert(&dadqlock, MA_OWNED)
+#define DADQ_UNLOCK()           mtx_unlock(&dadqlock)
+
+
+void
+nd6_dad_init(void)
+{
+	DADQ_LOCK_INIT();
+
+	TAILQ_INIT(&V_dadq);
+}
 
 static struct dadq *
 nd6_dad_find(struct bsd_ifaddr *ifa)
 {
 	struct dadq *dp;
+
+	DADQ_LOCK_ASSERT();
 
 	TAILQ_FOREACH(dp, &V_dadq, dad_list)
 		if (dp->dad_ifa == ifa)
@@ -1224,11 +1242,6 @@ nd6_dad_start(struct bsd_ifaddr *ifa, int delay)
 	struct dadq *dp;
 	char ip6buf[INET6_ADDRSTRLEN];
 
-	if (!V_dad_init) {
-		TAILQ_INIT(&V_dadq);
-		V_dad_init++;
-	}
-
 	/*
 	 * If we don't need DAD, don't do it.
 	 * There are several cases:
@@ -1258,13 +1271,17 @@ nd6_dad_start(struct bsd_ifaddr *ifa, int delay)
 	}
 	if (ND_IFINFO(ifa->ifa_ifp)->flags & ND6_IFF_IFDISABLED)
 		return;
+
+	DADQ_LOCK();
 	if (nd6_dad_find(ifa) != NULL) {
 		/* DAD already in progress */
+		DADQ_UNLOCK();
 		return;
 	}
 
 	dp = (struct dadq *) malloc(sizeof(*dp));
 	if (dp == NULL) {
+		DADQ_UNLOCK();
 		bsd_log(LOG_ERR, "nd6_dad_start: memory allocation failed for "
 				"%s(%s)\n",
 				ip6_sprintf(ip6buf, &ia->ia_addr.sin6_addr),
@@ -1272,11 +1289,7 @@ nd6_dad_start(struct bsd_ifaddr *ifa, int delay)
 		return;
 	}
 	bzero(dp, sizeof(*dp));
-	/* FIXME: Make nd6_dad_timer() MPSAFE
-	 *        nd6_dad_timer() touches V_dadq list so this probably needs to be protected with a lock.
-	 *        The ifa ref count is increased so the ifa should not be deleted.
-	 */
-	callout_init(&dp->dad_timer_ch, CALLOUT_MPSAFE);
+	callout_init_mtx(&dp->dad_timer_ch, &dadqlock, CALLOUT_MPSAFE);
 #ifdef VIMAGE
 	dp->dad_vnet = curvnet;
 #endif
@@ -1303,6 +1316,7 @@ nd6_dad_start(struct bsd_ifaddr *ifa, int delay)
 	} else {
 		nd6_dad_starttimer(dp, delay);
 	}
+	DADQ_UNLOCK();
 }
 
 /*
@@ -1313,20 +1327,24 @@ nd6_dad_stop(struct bsd_ifaddr *ifa)
 {
 	struct dadq *dp;
 
-	if (!V_dad_init)
-		return;
+	DADQ_LOCK();
+
 	dp = nd6_dad_find(ifa);
 	if (!dp) {
 		/* DAD wasn't started yet */
+		DADQ_UNLOCK();
 		return;
 	}
 
 	nd6_dad_stoptimer(dp);
 
 	TAILQ_REMOVE(&V_dadq, (struct dadq *)dp, dad_list);
+
 	free(dp);
 	dp = NULL;
 	ifa_free(ifa);
+
+	DADQ_UNLOCK();
 }
 
 static void
@@ -1337,6 +1355,8 @@ nd6_dad_timer(struct dadq *dp)
 	struct bsd_ifaddr *ifa = dp->dad_ifa;
 	struct in6_ifaddr *ia = (struct in6_ifaddr *)ifa;
 	char ip6buf[INET6_ADDRSTRLEN];
+
+	DADQ_LOCK_ASSERT();
 
 	s = splnet();		/* XXX */
 
@@ -1438,6 +1458,8 @@ nd6_dad_duplicated(struct bsd_ifaddr *ifa)
 	struct dadq *dp;
 	char ip6buf[INET6_ADDRSTRLEN];
 
+	DADQ_LOCK_ASSERT();
+
 	dp = nd6_dad_find(ifa);
 	if (dp == NULL) {
 		bsd_log(LOG_ERR, "nd6_dad_duplicated: DAD structure not found\n");
@@ -1536,11 +1558,13 @@ nd6_dad_ns_input(struct bsd_ifaddr *ifa)
 	ifp = ifa->ifa_ifp;
 	taddr6 = &ia->ia_addr.sin6_addr;
 	duplicate = 0;
+	DADQ_LOCK();
 	dp = nd6_dad_find(ifa);
 
 	/* Quickhack - completely ignore DAD NS packets */
 	if (V_dad_ignore_ns) {
 		char ip6buf[INET6_ADDRSTRLEN];
+		DADQ_UNLOCK();
 		nd6log((LOG_INFO,
 		    "nd6_dad_ns_input: ignoring DAD NS packet for "
 		    "address %s(%s)\n", ip6_sprintf(ip6buf, taddr6),
@@ -1568,6 +1592,7 @@ nd6_dad_ns_input(struct bsd_ifaddr *ifa)
 		if (dp)
 			dp->dad_ns_icount++;
 	}
+	DADQ_UNLOCK();
 }
 
 static void
@@ -1578,10 +1603,14 @@ nd6_dad_na_input(struct bsd_ifaddr *ifa)
 	if (ifa == NULL)
 		panic("ifa == NULL in nd6_dad_na_input");
 
+	DADQ_LOCK();
+
 	dp = nd6_dad_find(ifa);
 	if (dp)
 		dp->dad_na_icount++;
 
 	/* remove the address. */
 	nd6_dad_duplicated(ifa);
+
+	DADQ_UNLOCK();
 }

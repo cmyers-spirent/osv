@@ -173,6 +173,7 @@ static struct mbuf*  osv_route_arp_rtmsg(int if_idx, int cmd, const char* ip,
 
 static int osv_sockaddr_from_string(struct bsd_sockaddr_storage *addr, const char *str)
 {
+#ifdef INET6
     struct bsd_sockaddr_in6 *sa6 = (struct bsd_sockaddr_in6*)addr;
     if (inet_pton(AF_INET6, str, (void*)&sa6->sin6_addr)) {
         sa6->sin6_len = sizeof(*sa6);
@@ -182,6 +183,7 @@ static int osv_sockaddr_from_string(struct bsd_sockaddr_storage *addr, const cha
         sa6->sin6_scope_id = 0;
         return 1;
     }
+#endif
     struct bsd_sockaddr_in *sa4 = (struct bsd_sockaddr_in*)addr;
     if (inet_pton(AF_INET, str, (void*)&sa4->sin_addr)) { 
         sa4->sin_len = sizeof(*sa4);
@@ -204,6 +206,7 @@ static int osv_sockaddr_from_prefix_len(int af, struct bsd_sockaddr_storage *add
             in_prefixlen2mask(&sa4->sin_addr, prefix_len);
         }
         return 1;
+#ifdef INET6
     case AF_INET6:
         {
             struct bsd_sockaddr_in6 *sa6 = (struct bsd_sockaddr_in6 *)addr;
@@ -215,6 +218,7 @@ static int osv_sockaddr_from_prefix_len(int af, struct bsd_sockaddr_storage *add
             in6_prefixlen2mask(&sa6->sin6_addr, prefix_len);
         }
         return 1;
+#endif
     default:
         return 0;
     }
@@ -233,7 +237,7 @@ static struct mbuf*  osv_route_rtmsg(int cmd, const char* destination,
     struct bsd_ifaddr *ifa;
     bool is_link = type == gw_type::link;
 
-    /* IPv4: Addresses */
+    /* IP: Addresses */
     struct bsd_sockaddr_storage dst;
     struct bsd_sockaddr_storage gw;
     struct bsd_sockaddr_storage mask;

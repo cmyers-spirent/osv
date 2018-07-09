@@ -21,6 +21,13 @@ makedir = $(call very-quiet, mkdir -p $(dir $@))
 
 autodepend = -MD -MT $@ -MP
 
+include $(OSV_BASE)/conf/base.mk
+
+configuration-defines = conf-preempt conf-debug_memory conf-logger_debug conf-INET6
+configuration = $(foreach cf,$(configuration-defines), \
+                      -D$(cf:conf-%=CONF_%)=$($(cf)))
+
+
 INCLUDES = -I$(src)/arch/$(ARCH) -I$(src) -I$(src)/include \
 	-I$(src)/arch/common -isystem $(src)/include/glibc-compat \
 	$(shell $(CXX) -E -xc++ - -v </dev/null 2>&1 | awk '/^End/ {exit} /^ .*c\+\+/ {print "-isystem" $$0}') \
@@ -28,7 +35,7 @@ INCLUDES = -I$(src)/arch/$(ARCH) -I$(src) -I$(src)/include \
 	-isystem $(out)/gen/include
 
 COMMON = $(autodepend) $(INCLUDES) -g -O2 -fPIC -DBOOST_TEST_DYN_LINK \
-	-U _FORTIFY_SOURCE -D_KERNEL -D__OSV__ -DCONF_debug_memory=0 \
+	-U _FORTIFY_SOURCE -D_KERNEL -D__OSV__ $(configuration) \
 	-Wall -Wno-pointer-arith -Wformat=0 -Wno-format-security
 
 LIBS =
@@ -87,7 +94,8 @@ tests := tst-pthread.so misc-ramdisk.so tst-vblk.so tst-bsd-evh.so \
 	tst-ifaddrs.so tst-pthread-affinity-inherit.so tst-sem-timed-wait.so \
 	tst-ttyname.so tst-pthread-barrier.so tst-feexcept.so tst-math.so \
 	tst-sigaltstack.so tst-fread.so tst-tcp-cork.so \
-	tst-calloc.so tst-crypt.so tst-posix-aio.so
+	tst-calloc.so tst-crypt.so tst-posix-aio.so \
+	tst-socket-timestamp.so tst-pktinfo.so
 
 #	libstatic-thread-variable.so tst-static-thread-variable.so \
 
