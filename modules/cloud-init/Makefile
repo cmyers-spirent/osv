@@ -13,7 +13,7 @@ INCLUDES += -I$(HTTPSERVER_API_DIR)
 
 # the build target executable:
 TARGET = cloud-init
-CPP_FILES := client.cc cloud-init.cc data-source.cc main.cc template.cc cassandra-module.cc json.cc
+CPP_FILES := client.cc cloud-init.cc data-source.cc main.cc template.cc network-module.cc cassandra-module.cc json.cc
 OBJ_FILES := $(addprefix obj/,$(CPP_FILES:.cc=.o))
 DEPS := $(OBJ_FILES:.o=.d)
 
