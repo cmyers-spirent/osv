@@ -127,9 +127,7 @@ struct l_ifmap {
 #define	LINUX_IFNAMSIZ		16
 
 struct l_ifreq {
-	union {
-		char	ifrn_name[LINUX_IFNAMSIZ];
-	} ifr_ifrn;
+	char	ifr_name[LINUX_IFNAMSIZ];
 
 	union {
 		struct l_sockaddr	ifru_addr;
@@ -146,7 +144,6 @@ struct l_ifreq {
 	} ifr_ifru;
 } __packed;
 
-#define	ifr_name	ifr_ifrn.ifrn_name	/* Interface name */
 #define	ifr_hwaddr	ifr_ifru.ifru_hwaddr	/* MAC address */
 
 struct l_ifconf {
