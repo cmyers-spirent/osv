@@ -173,6 +173,13 @@ static struct mbuf*  osv_route_arp_rtmsg(int if_idx, int cmd, const char* ip,
 
 static int osv_sockaddr_from_string(struct bsd_sockaddr_storage *addr, const char *str)
 {
+    struct bsd_sockaddr_in *sa4 = (struct bsd_sockaddr_in*)addr;
+    if (inet_pton(AF_INET, str, (void*)&sa4->sin_addr)) { 
+        sa4->sin_len = sizeof(*sa4);
+        sa4->sin_family = AF_INET;
+        sa4->sin_port = 0;
+        return 1;
+    }
 #ifdef INET6
     struct bsd_sockaddr_in6 *sa6 = (struct bsd_sockaddr_in6*)addr;
     if (inet_pton(AF_INET6, str, (void*)&sa6->sin6_addr)) {
@@ -184,13 +191,6 @@ static int osv_sockaddr_from_string(struct bsd_sockaddr_storage *addr, const cha
         return 1;
     }
 #endif
-    struct bsd_sockaddr_in *sa4 = (struct bsd_sockaddr_in*)addr;
-    if (inet_pton(AF_INET, str, (void*)&sa4->sin_addr)) { 
-        sa4->sin_len = sizeof(*sa4);
-        sa4->sin_family = AF_INET;
-        sa4->sin_port = 0;
-        return 1;
-    }
     return 0;
 }
 

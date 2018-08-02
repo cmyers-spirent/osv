@@ -120,7 +120,9 @@ int if_add_ipv4_addr(std::string if_name, std::string ip_addr, std::string mask_
         error = EINVAL;
         goto out;
     }
+    mask->sin_family = AF_INET;
     mask->sin_len = sizeof(struct bsd_sockaddr_in);
+
     broadcast->sin_family      = AF_INET;
     broadcast->sin_len         = sizeof(struct bsd_sockaddr_in);
     broadcast->sin_addr.s_addr = (addr->sin_addr.s_addr &
