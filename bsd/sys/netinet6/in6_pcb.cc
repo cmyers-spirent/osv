@@ -183,7 +183,7 @@ in6_pcbbind(register struct inpcb *inp, struct bsd_sockaddr *nam,
 			    priv_check_cred(cred, PRIV_NETINET_RESERVEDPORT,
 			    0))
 				return (EACCES);
-				if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr)) {
+			if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr)) {
 				t = in6_pcblookup_local(pcbinfo,
 				    &sin6->sin6_addr, lport,
 				    INPLOOKUP_WILDCARD, cred);
@@ -193,7 +193,7 @@ in6_pcbbind(register struct inpcb *inp, struct bsd_sockaddr *nam,
 				     IN6_IS_ADDR_UNSPECIFIED(&t->in6p_faddr)) &&
 				    (!IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr) ||
 				     !IN6_IS_ADDR_UNSPECIFIED(&t->in6p_laddr) ||
-                     (t->inp_flags2 & INP_REUSEPORT) == 0))
+				     (t->inp_flags2 & INP_REUSEPORT) == 0))
 					return (EADDRINUSE);
 #ifdef INET
 				if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0 &&
@@ -209,7 +209,7 @@ in6_pcbbind(register struct inpcb *inp, struct bsd_sockaddr *nam,
 					      INP_TIMEWAIT) == 0) &&
 					    (so->so_type != SOCK_STREAM ||
 					     ntohl(t->inp_faddr.s_addr) ==
-                         INADDR_ANY))
+					     INADDR_ANY))
 						return (EADDRINUSE);
 				}
 #endif

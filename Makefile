@@ -510,6 +510,13 @@ $(out)/bsd/sys/net/if.o: COMMON+=-fno-strict-aliasing
 $(out)/bsd/sys/netinet/in_rmx.o: COMMON+=-fno-strict-aliasing
 $(out)/bsd/sys/netinet/ip_input.o: COMMON+=-fno-strict-aliasing
 $(out)/bsd/sys/netinet/in.o: COMMON+=-fno-strict-aliasing
+ifeq ($(conf-INET6), 1)
+$(out)/bsd/sys/netinet6/in6.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet6/in6_ifattach.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet6/in6_rmx.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet6/nd6.o: COMMON+=-fno-strict-aliasing
+$(out)/bsd/sys/netinet6/nd6_rtr.o: COMMON+=-fno-strict-aliasing
+endif
 
 $(out)/bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs/metaslab.o: COMMON+=-Wno-tautological-compare
 
