@@ -12,6 +12,8 @@
 #include <string.h>
 
 std::string dmi_bios_vendor("Unknown");
+std::string dmi_system_manufacturer("Unknown");
+std::string dmi_system_product_name("Unknown");
 
 static inline u8 read_u8(const char* buf, unsigned long idx)
 {
@@ -80,6 +82,12 @@ static void dmi_table(u32 base, u16 len, u16 num)
         case 0: /* 7.1. BIOS Information */
             if (header.length >= 18) {
                 dmi_bios_vendor = dmi_string(header, header.data[0x04]);
+            }
+            break;
+        case 1: /* 7.2. System Information */
+            if (header.length >= 8) {
+                dmi_system_manufacturer = dmi_string(header, header.data[0x04]);
+                dmi_system_product_name = dmi_string(header, header.data[0x05]);
             }
             break;
         default:

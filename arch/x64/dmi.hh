@@ -11,6 +11,8 @@
 #include <string>
 
 extern std::string dmi_bios_vendor;
+extern std::string dmi_system_manufacturer;
+extern std::string dmi_system_product_name;
 
 void dmi_probe();
 
