@@ -16,6 +16,10 @@ void firmware_probe();
 
 std::string firmware_vendor();
 
+std::string system_manufacturer();
+
+std::string system_product_name();
+
 }
 
 #endif

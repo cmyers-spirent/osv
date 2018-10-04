@@ -21,4 +21,14 @@ std::string firmware_vendor()
     return dmi_bios_vendor;
 }
 
+std::string system_manufacturer()
+{
+    return dmi_system_manufacturer;
+}
+
+std::string system_product_name()
+{
+    return dmi_system_product_name;
+}
+
 }

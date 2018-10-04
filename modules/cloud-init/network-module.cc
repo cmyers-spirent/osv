@@ -246,14 +246,18 @@ void network_module::configure_physical_interface(const YAML::Node& node, networ
                 }
 
                 // Add address to interface
-                if (osv::if_add_addr(if_name, address, netmask) != 0){
+                if (osv::if_add_addr(if_name, address, netmask) != 0) {
                     debug("cloud-init: %s error.  Failed adding address %s/%s to interface %s\n",
                           __FUNCTION__,
                           address.c_str(), netmask.c_str(), if_name.c_str());
                     continue;
                 }
+
+                // Set environment variable telling loader not to start DHCP
+                setenv("USE_STATIC_IP", "True", 1);
+
                 if (subnet["gateway"]) {
-                    std::string gateway = node["gateway"].as<std::string>();
+                    std::string gateway = subnet["gateway"].as<std::string>();
                     std::string network = ipv6 ? "::" : "0.0.0.0";
                     std::string netmask = ipv6 ? "::" : "0.0.0.0";
 

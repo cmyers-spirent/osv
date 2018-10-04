@@ -50,6 +50,8 @@
 #include <dirent.h>
 #include <iostream>
 #include <fstream>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "drivers/zfs.hh"
 #include "drivers/random.hh"
@@ -330,6 +332,86 @@ static std::string read_file(std::string fn)
           std::istreambuf_iterator<char>());
 }
 
+static void read_init_commands(const char *path, std::vector<std::vector<std::string>> &init_commands)
+{
+    struct dirent **namelist = nullptr;
+    int count = scandir(path, &namelist, NULL, alphasort);
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(".", namelist[i]->d_name) ||
+            !strcmp("..", namelist[i]->d_name)) {
+            free(namelist[i]);
+            continue;
+        }
+        std::string fn(path);
+        if (fn.length() && fn.back() != '/') {
+            fn += '/';
+        }
+        fn += namelist[i]->d_name;
+        struct stat st;
+        if (stat(fn.c_str(), &st) != 0 || st.st_mode & S_IFDIR) {
+            free(namelist[i]);
+            continue;
+        }
+        auto cmdline = read_file(fn);
+        debug("Running from %s: %s\n", fn.c_str(), cmdline.c_str());
+        bool ok;
+        auto new_commands = osv::parse_command_line(cmdline, ok);
+        free(namelist[i]);
+        if (ok) {
+            init_commands.insert(init_commands.end(),
+                    new_commands.begin(), new_commands.end());
+        }
+    }
+    free(namelist);
+}
+
+static void run_init_commands(const std::vector<std::vector<std::string>> &commands,
+                              std::vector<shared_app_t> &bg,
+                              std::vector<shared_app_t> &detached)
+{
+    // run each payload in order
+    // Our parse_command_line() leaves at the end of each command a delimiter,
+    // can be '&' if we need to run this command in a new thread, or ';' or
+    // empty otherwise, to run in this thread. '&!' is the same as '&', but
+    // doesn't wait for the thread to finish before exiting OSv.
+    for (auto &it : commands) {
+        std::vector<std::string> newvec(it.begin(), std::prev(it.end()));
+        auto suffix = it.back();
+        try {
+            bool background = (suffix == "&") || (suffix == "&!");
+            auto app = application::run(newvec);
+            if (suffix == "&!") {
+                detached.push_back(app);
+            } else if (!background) {
+                app->join();
+            } else {
+                bg.push_back(app);
+            }
+        } catch (const launch_error& e) {
+            std::cerr << e.what() << ". Powering off.\n";
+            osv::poweroff();
+        }
+    }
+}
+
+static void update_environment()
+{
+    std::string if_ip;
+    auto nr_ips = 0;
+
+    osv::for_each_if([&](std::string if_name) {
+        if (if_name == "lo0")
+            return;
+        if_ip = osv::if_ip(if_name);
+        if (if_ip == "")
+            return;
+        nr_ips++;
+    });
+    if (nr_ips == 1) {
+       setenv("OSV_IP", if_ip.c_str(), 1);
+    }
+}
+
 void* do_main_thread(void *_main_args)
 {
     auto app_cmdline = static_cast<char*>(_main_args);
@@ -373,6 +455,8 @@ void* do_main_thread(void *_main_args)
 #endif
 
     bool has_if = false;
+    bool use_dhcp = true;
+
     osv::for_each_if([&has_if] (std::string if_name) {
         if (if_name == "lo0")
             return;
@@ -389,9 +473,9 @@ void* do_main_thread(void *_main_args)
         }
     });
     if (has_if) {
-        if (opt_ip.size() == 0) {
-            dhcp_start(true);
-        } else {
+        if (opt_ip.size() > 0) {
+            use_dhcp = false;
+
             // Add interface IP addresses
             for (auto t : opt_ip) {
                 std::vector<std::string> tmp;
@@ -442,18 +526,6 @@ void* do_main_thread(void *_main_args)
         }
     }
 
-    std::string if_ip;
-    auto nr_ips = 0;
-
-    osv::for_each_if([&](std::string if_name) {
-        if (if_name == "lo0")
-            return;
-        if_ip = osv::if_ip(if_name);
-        nr_ips++;
-    });
-    if (nr_ips == 1) {
-       setenv("OSV_IP", if_ip.c_str(), 1);
-    }
 
     if (!opt_chdir.empty()) {
         debug("Chdir to: '%s'\n", opt_chdir.c_str());
@@ -494,61 +566,40 @@ void* do_main_thread(void *_main_args)
         }
     }
 
+    std::vector<shared_app_t> detached;
+    std::vector<shared_app_t> bg;
+
+    // Run command lines from /init/local/* before starting DHCP
+    // This allows these commands to disable DHCP
+    if (opt_init && access("/init/local", F_OK) == 0) {
+        std::vector<std::vector<std::string>> init_commands;
+        read_init_commands("/init/local/", init_commands);
+        run_init_commands(init_commands, bg, detached);
+    }
+
+    // Skip DHCP if environment variable is set by /init/local commands
+    // This can be done on OSv because all applications share the same environment
+    if (getenv("USE_STATIC_IP")) {
+        use_dhcp = false;
+    }
+
+    if (has_if && use_dhcp) {
+        dhcp_start(true);
+    }
+
+    update_environment();
+
     auto commands = prepare_commands(app_cmdline);
 
     // Run command lines in /init/* before the manual command line
     if (opt_init) {
         std::vector<std::vector<std::string>> init_commands;
-        struct dirent **namelist = nullptr;
-        int count = scandir("/init", &namelist, NULL, alphasort);
-        for (int i = 0; i < count; i++) {
-            if (!strcmp(".", namelist[i]->d_name) ||
-                    !strcmp("..", namelist[i]->d_name)) {
-                free(namelist[i]);
-                continue;
-            }
-            std::string fn("/init/");
-            fn += namelist[i]->d_name;
-            auto cmdline = read_file(fn);
-            debug("Running from %s: %s\n", fn.c_str(), cmdline.c_str());
-            bool ok;
-            auto new_commands = osv::parse_command_line(cmdline, ok);
-            free(namelist[i]);
-            if (ok) {
-                init_commands.insert(init_commands.end(),
-                        new_commands.begin(), new_commands.end());
-            }
-        }
-        free(namelist);
+        read_init_commands("/init/", init_commands);
         commands.insert(commands.begin(),
                  init_commands.begin(), init_commands.end());
     }
 
-    // run each payload in order
-    // Our parse_command_line() leaves at the end of each command a delimiter,
-    // can be '&' if we need to run this command in a new thread, or ';' or
-    // empty otherwise, to run in this thread. '&!' is the same as '&', but
-    // doesn't wait for the thread to finish before exiting OSv.
-    std::vector<shared_app_t> detached;
-    std::vector<shared_app_t> bg;
-    for (auto &it : commands) {
-        std::vector<std::string> newvec(it.begin(), std::prev(it.end()));
-        auto suffix = it.back();
-        try {
-            bool background = (suffix == "&") || (suffix == "&!");
-            auto app = application::run(newvec);
-            if (suffix == "&!") {
-                detached.push_back(app);
-            } else if (!background) {
-                app->join();
-            } else {
-                bg.push_back(app);
-            }
-        } catch (const launch_error& e) {
-            std::cerr << e.what() << ". Powering off.\n";
-            osv::poweroff();
-        }
-    }
+    run_init_commands(commands, bg, detached);
 
     for (auto app : bg) {
         app->join();

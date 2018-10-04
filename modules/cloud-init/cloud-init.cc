@@ -11,6 +11,7 @@
 #include <memory>
 #include "client.hh"
 #include <boost/asio.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include "data-source.hh"
 #include <osv/debug.hh>
@@ -283,9 +284,13 @@ void osvinit::load_url(const std::string& server, const std::string& path,
 
 void osvinit::load_from_cloud(bool ignore_missing_source)
 {
+    fprintf(stderr, "Firmware vendor: %s\n", osv::firmware_vendor().c_str());
+    fprintf(stderr, "System manufacturer: %s\n", osv::system_manufacturer().c_str());
+
     if (!_force_probe
         && osv::hypervisor() != osv::hypervisor_type::xen
         && osv::firmware_vendor() != "Google"
+        && !boost::starts_with(osv::system_manufacturer(), "OpenStack")
         && osv::hypervisor() != osv::hypervisor_type::vmware_esxi) {
         return;
     }

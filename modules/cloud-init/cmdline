@@ -1,1 +1,1 @@
-/usr/mgmt/cloud-init.so;
+/usr/mgmt/cloud-init.so --cloud;

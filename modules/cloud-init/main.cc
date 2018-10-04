@@ -114,6 +114,8 @@ int main(int argc, char* argv[])
             ("help", "produce help message")
             ("skip-error", "do not stop on error")
             ("force-probe", "force data source probing")
+            ("cloud", "check cloud data sources")
+            ("disk", "check local disk data sources")
             ("file", po::value<std::string>(), "an init file")
             ("server", po::value<std::string>(), "a server to read the file from. must come with a --url")
             ("url", po::value<std::string>(), "a url at the server")
@@ -147,9 +149,9 @@ int main(int argc, char* argv[])
             init.load_url(config["server"].as<std::string>(),
                 config["url"].as<std::string>(),
                 config["port"].as<std::string>());
-        } else if(config_disk("/tmp/config.yaml")) {
+        } else if (config.count("disk") > 0 && config_disk("/tmp/config.yaml")) {
             init.load_file("/tmp/config.yaml");
-        } else {
+        } else if (config.count("cloud") > 0) {
             init.load_from_cloud();
         }
 

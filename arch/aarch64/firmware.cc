@@ -18,4 +18,15 @@ std::string firmware_vendor()
     return "Unknown";
 }
 
+std::string system_manufacturer()
+{
+    return "Unknown";
+}
+
+std::string system_product_name()
+{
+    return "Unknown";
+}
+
+
 }
