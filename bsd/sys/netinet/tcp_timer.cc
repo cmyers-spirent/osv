@@ -656,3 +656,31 @@ tcp_timer::get(tcp_timer_type timer_type)
 	assert(timer_type < tcp_timer_type::COUNT);
 	return *timers[timer_type];
 }
+
+void
+tcp_timer_to_xtimer(struct tcpcb *tp, struct tcp_timer *timers, struct xtcp_timer *xtimer)
+{
+	bzero(xtimer, sizeof(struct xtcp_timer));
+	if (timers == NULL)
+		return;
+	auto now = osv::clock::uptime::now();
+
+	auto& delack = timers->get(tcp_timer_type::TT_DELACK);
+	if (delack.is_active())
+		xtimer->tt_delack = std::chrono::duration_cast<std::chrono::milliseconds>(delack.get_timeout() - now).count();
+	auto& rexmt = timers->get(tcp_timer_type::TT_REXMT);
+	if (rexmt.is_active())
+		xtimer->tt_rexmt = std::chrono::duration_cast<std::chrono::milliseconds>(rexmt.get_timeout() - now).count();
+	auto& persist = timers->get(tcp_timer_type::TT_PERSIST);
+	if (persist.is_active())
+		xtimer->tt_persist = std::chrono::duration_cast<std::chrono::milliseconds>(persist.get_timeout() - now).count();
+	auto& keep = timers->get(tcp_timer_type::TT_KEEP);
+	if (keep.is_active())
+		xtimer->tt_keep = std::chrono::duration_cast<std::chrono::milliseconds>(keep.get_timeout() - now).count();
+	auto& msl = timers->get(tcp_timer_type::TT_2MSL);
+	if (msl.is_active())
+		xtimer->tt_2msl = std::chrono::duration_cast<std::chrono::milliseconds>(msl.get_timeout() - now).count();
+
+	xtimer->t_rcvtime = (std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() - ticks2ns(tp->t_rcvtime))/1000000;
+}
+

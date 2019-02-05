@@ -8,9 +8,11 @@
 #include "autogen/network.json.hh"
 #include "../libtools/route_info.hh"
 #include "../libtools/network_interface.hh"
+#include "../libtools/netstat.hh"
 #include "exception.hh"
 #include <vector>
 #include <osv/clock.hh>
+
 
 namespace httpserver {
 
@@ -84,6 +86,46 @@ void init(routes& routes)
         osv::foreach_route([&res](const osv::route_info& route) {
             res.push_back(Route());
             res.back() = route;
+            return true;
+        });
+        return res;
+    });
+
+    network_json::getTcpStats.set_handler([](const_req req) {
+        vector<Tcp_stats> res;
+        struct tcpstat stats;
+        if (osv::get_tcp_stats(stats) == 0) {
+            res.push_back(Tcp_stats());
+            res.back() = stats;
+        }
+        return res;
+    });
+
+    network_json::getTcpSessionStats.set_handler([](const_req req) {
+        vector<Pcb_stats> res;
+        osv::foreach_tcp_session([&res](const osv::pcb_stats& stats) {
+            res.push_back(Pcb_stats());
+            res.back() = stats;
+            return true;
+        });
+        return res;
+    });
+
+    network_json::getUdpStats.set_handler([](const_req req) {
+        vector<Udp_stats> res;
+        struct udpstat stats;
+        if (osv::get_udp_stats(stats) == 0) {
+            res.push_back(Udp_stats());
+            res.back() = stats;
+        }
+        return res;
+    });
+
+    network_json::getUdpSessionStats.set_handler([](const_req req) {
+        vector<Pcb_stats> res;
+        osv::foreach_udp_session([&res](const osv::pcb_stats& stats) {
+            res.push_back(Pcb_stats());
+            res.back() = stats;
             return true;
         });
         return res;

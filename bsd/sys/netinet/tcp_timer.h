@@ -208,7 +208,7 @@ void tcp_timer_activate(struct tcpcb *tp, tcp_timer_type timer_type, ticks_t del
 int tcp_timer_active(struct tcpcb *tp, tcp_timer_type timer_type);
 
 void init_timers(struct tcp_timer* timers, struct tcpcb *tp, struct inpcb *inp);
-
+void tcp_timer_to_xtimer(struct tcpcb *tp, tcp_timer *timer, struct xtcp_timer *xtimer);
 
 #endif /* _KERNEL */
 

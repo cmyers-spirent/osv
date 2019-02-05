@@ -131,6 +131,12 @@ public:
      * Inherently racy, use with caution.
      */
     bool is_pending();
+
+    /**
+     * Returns time timer will expire at.
+     */
+    clock::time_point get_timeout();
+
 private:
     friend class async_worker;
     void fire(percpu_timer_task&);
@@ -214,6 +220,11 @@ public:
      * action to check if it is eligible to fire. It can proceed only if this returns true.
      */
     bool try_fire();
+
+    /**
+     * Returns time timer will expire at.
+     */
+    clock::time_point get_timeout();
 
 private:
     bool _active;

@@ -38,6 +38,7 @@
 #include <bsd/sys/sys/libkern.h>
 
 #include <bsd/sys/sys/param.h>
+#include <bsd/sys/sys/sysctl.h>
 #include <bsd/sys/sys/limits.h>
 #include <bsd/sys/sys/mbuf.h>
 #include <bsd/sys/sys/md5.h>
@@ -82,6 +83,17 @@
 
 #include <machine/in_cksum.h>
 #include <functional>
+
+#undef SYSCTL_VNET_INT
+#define SYSCTL_VNET_INT(...)
+#undef SYSCTL_INT
+#define SYSCTL_INT(...)
+#undef SYSCTL_UINT
+#define SYSCTL_UINT(...)
+#undef SYSCTL_PROC
+#define SYSCTL_PROC(...)
+#undef SYSCTL_NODE
+#define SYSCTL_NODE(...)
 
 static VNET_DEFINE(int, tcp_syncookies) = 1;
 #define	V_tcp_syncookies		VNET(tcp_syncookies)
@@ -1692,7 +1704,6 @@ int syncache_pcbcount(void)
 	return count;
 }
 
-#if 0
 /*
  * Exports the syncache entries to userland so that netstat can display
  * them alongside the other sockets.  This function is intended to be
@@ -1725,7 +1736,7 @@ int syncache_pcblist(struct sysctl_req *req, int max_pcbs, int *pcbs_exported)
 			else
 				xt.xt_inp.inp_vflag = INP_IPV4;
 			bcopy(&sc->sc_inc, &xt.xt_inp.inp_inc, sizeof (struct in_conninfo));
-			xt.xt_tp.t_inpcb = &xt.xt_inp;
+			// xt.xt_tp.t_inpcb = &xt.xt_inp;
 			xt.xt_tp.t_state = TCPS_SYN_RECEIVED;
 			xt.xt_socket.xso_protocol = IPPROTO_TCP;
 			xt.xt_socket.xso_len = sizeof(struct xsocket);
@@ -1743,4 +1754,3 @@ int syncache_pcblist(struct sysctl_req *req, int max_pcbs, int *pcbs_exported)
 	exit: *pcbs_exported = count;
 	return error;
 }
-#endif

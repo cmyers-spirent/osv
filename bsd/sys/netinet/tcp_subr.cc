@@ -35,6 +35,7 @@
 
 #include <bsd/sys/sys/libkern.h>
 #include <bsd/sys/sys/param.h>
+#include <bsd/sys/sys/sysctl.h>
 #include <bsd/sys/sys/mbuf.h>
 #ifdef INET6
 #include <bsd/sys/sys/domain.h>
@@ -93,6 +94,16 @@
 #include <machine/in_cksum.h>
 #include <bsd/sys/sys/md5.h>
 #include <bsd/sys/net/routecache.hh>
+
+#undef SYSCTL_VNET_INT
+#define SYSCTL_VNET_INT(...)
+#undef SYSCTL_INT
+#define SYSCTL_INT(...)
+#undef SYSCTL_UINT
+#define SYSCTL_UINT(...)
+#undef SYSCTL_PROC
+#define SYSCTL_PROC(...)
+
 
 VNET_DEFINE(int, tcp_mssdflt) = TCP_MSS;
 #ifdef INET6
@@ -156,6 +167,7 @@ SYSCTL_VNET_PROC(_net_inet_tcp, TCPCTL_V6MSSDFLT, v6mssdflt,
  * checking. This setting prevents us from sending too small packets.
  */
 VNET_DEFINE(int, tcp_minmss) = TCP_MINMSS;
+
 SYSCTL_VNET_INT(_net_inet_tcp, OID_AUTO, minmss, CTLFLAG_RW,
      &VNET_NAME(tcp_minmss), 0,
     "Minmum TCP Maximum Segment Size");
@@ -1032,8 +1044,7 @@ tcp_notify(struct inpcb *inp, int error)
 #endif
 }
 
-#if 0
-static int
+int
 tcp_pcblist(SYSCTL_HANDLER_ARGS)
 {
 	int error, i, m, n, pcb_count;
@@ -1058,17 +1069,19 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 	/*
 	 * OK, now we're committed to doing something.
 	 */
-	INP_INFO_RLOCK(&V_tcbinfo);
+	INP_INFO_WLOCK(&V_tcbinfo);
 	gencnt = V_tcbinfo.ipi_gencnt;
 	n = V_tcbinfo.ipi_count;
-	INP_INFO_RUNLOCK(&V_tcbinfo);
+	INP_INFO_WUNLOCK(&V_tcbinfo);
 
 	m = syncache_pcbcount();
 
+#if 0
 	error = sysctl_wire_old_buffer(req, 2 * (sizeof xig)
 		+ (n + m) * sizeof(struct xtcpcb));
 	if (error != 0)
 		return (error);
+#endif
 
 	xig.xig_len = sizeof xig;
 	xig.xig_count = n + m;
@@ -1082,28 +1095,22 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 	if (error)
 		return (error);
 
-	inp_list = malloc(n * sizeof *inp_list, M_TEMP, M_WAITOK);
+	inp_list = (struct inpcb **) malloc(n * sizeof(*inp_list));
 	if (inp_list == NULL)
 		return (ENOMEM);
 
-	INP_INFO_RLOCK(&V_tcbinfo);
+	INP_INFO_WLOCK(&V_tcbinfo);
 	for (inp = LIST_FIRST(V_tcbinfo.ipi_listhead), i = 0;
 	    inp != NULL && i < n; inp = LIST_NEXT(inp, inp_list)) {
 		INP_LOCK(inp);
 		if (inp->inp_gencnt <= gencnt) {
-			/*
-			 * XXX: This use of cr_cansee(), introduced with
-			 * TCP state changes, is not quite right, but for
-			 * now, better than nothing.
-			 */
 			if (inp->inp_flags & INP_TIMEWAIT) {
 				if (intotw(inp) != NULL)
-					error = cr_cansee(req->td->td_ucred,
-					    intotw(inp)->tw_cred);
+					error = 0;
 				else
 					error = EINVAL;	/* Skip this inp. */
 			} else
-				error = cr_canseeinpcb(req->td->td_ucred, inp);
+				error = 0;
 			if (error == 0) {
 				in_pcbref(inp);
 				inp_list[i++] = inp;
@@ -1111,7 +1118,7 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 		}
 		INP_UNLOCK(inp);
 	}
-	INP_INFO_RUNLOCK(&V_tcbinfo);
+	INP_INFO_WUNLOCK(&V_tcbinfo);
 	n = i;
 
 	error = 0;
@@ -1120,22 +1127,24 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 		INP_LOCK(inp);
 		if (inp->inp_gencnt <= gencnt) {
 			struct xtcpcb xt;
-			void *inp_ppcb;
+			class tcpcb *tp;
 
 			bzero(&xt, sizeof(xt));
 			xt.xt_len = sizeof xt;
 			/* XXX should avoid extra copy */
-			bcopy(inp, &xt.xt_inp, sizeof *inp);
-			inp_ppcb = inp->inp_ppcb;
-			if (inp_ppcb == NULL)
+			// bcopy(inp, &xt.xt_inp, sizeof *inp);
+			inpcb_to_stats(inp, &xt.xt_inp);
+			tp = intotcpcb(inp);
+			if (tp == NULL)
 				bzero((char *) &xt.xt_tp, sizeof xt.xt_tp);
 			else if (inp->inp_flags & INP_TIMEWAIT) {
 				bzero((char *) &xt.xt_tp, sizeof xt.xt_tp);
 				xt.xt_tp.t_state = TCPS_TIME_WAIT;
 			} else {
-				bcopy(inp_ppcb, &xt.xt_tp, sizeof xt.xt_tp);
-				if (xt.xt_tp.t_timers)
-					tcp_timer_to_xtimer(&xt.xt_tp, xt.xt_tp.t_timers, &xt.xt_timer);
+				// bcopy(inp_ppcb, &xt.xt_tp, sizeof xt.xt_tp);
+				tcpcb_to_stats(tp, &xt.xt_tp);
+				if (tp->t_timers)
+					tcp_timer_to_xtimer(tp, tp->t_timers, &xt.xt_timer);
 			}
 			if (inp->inp_socket != NULL)
 				sotoxsocket(inp->inp_socket, &xt.xt_socket);
@@ -1166,20 +1175,22 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 		 * while we were processing this request, and it
 		 * might be necessary to retry.
 		 */
-		INP_INFO_RLOCK(&V_tcbinfo);
+		INP_INFO_WLOCK(&V_tcbinfo);
 		xig.xig_gen = V_tcbinfo.ipi_gencnt;
 		xig.xig_sogen = so_gencnt;
 		xig.xig_count = V_tcbinfo.ipi_count + pcb_count;
-		INP_INFO_RUNLOCK(&V_tcbinfo);
+		INP_INFO_WUNLOCK(&V_tcbinfo);
 		error = SYSCTL_OUT(req, &xig, sizeof xig);
 	}
-	free(inp_list, M_TEMP);
+	free(inp_list);
 	return (error);
 }
 
 SYSCTL_PROC(_net_inet_tcp, TCPCTL_PCBLIST, pcblist,
     CTLTYPE_OPAQUE | CTLFLAG_RD, NULL, 0,
     tcp_pcblist, "S,xtcpcb", "List of active TCP connections");
+
+#if 0
 
 #ifdef INET
 static int

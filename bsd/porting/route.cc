@@ -46,7 +46,18 @@
 #include <bsd/sys/netinet6/in6_var.h>
 #endif
 
+#include <bsd/sys/netinet/ip_var.h>
+#include <bsd/sys/netinet/tcp_var.h>
+#include <bsd/sys/netinet/udp.h>
+#include <bsd/sys/netinet/udp_var.h>
+
+#include <osv/sched.hh>
+
 int sysctl_rtsock(SYSCTL_HANDLER_ARGS) ;
+int tcp_pcblist(SYSCTL_HANDLER_ARGS);
+int udp_pcblist(SYSCTL_HANDLER_ARGS);
+
+static int sysctl_inet(SYSCTL_HANDLER_ARGS);
 
 enum class gw_type: u8 {
     inet    = 0, // Gateway is a internet address
@@ -472,6 +483,43 @@ sysctl_new_kernel(struct sysctl_req *req, void *p, size_t l)
 	req->newidx += l;
 	return (0);
 }
+
+/*
+ * Handle any kind of opaque data.
+ * arg1 points to it, arg2 is the size.
+ */
+int
+sysctl_handle_opaque(SYSCTL_HANDLER_ARGS)
+{
+	int error, tries;
+	u_int generation;
+	struct sysctl_req req2;
+
+	/*
+	 * Attempt to get a coherent snapshot, by using the thread
+	 * pre-emption counter updated from within mi_switch() to
+	 * determine if we were pre-empted during a bcopy() or
+	 * copyout(). Make 3 attempts at doing this before giving up.
+	 * If we encounter an error, stop immediately.
+	 */
+	tries = 0;
+	req2 = *req;
+retry:
+	generation = sched::thread::current()->stat_switches.get();
+	error = SYSCTL_OUT(req, arg1, arg2);
+	if (error)
+		return (error);
+	tries++;
+	if (generation != sched::thread::current()->stat_switches.get() && tries < 3) {
+		*req = req2;
+		goto retry;
+	}
+
+	error = SYSCTL_IN(req, arg1, arg2);
+
+	return (error);
+}
+
 /*
  * Our limited version of sysctl. The arguments are the same as with the
  * standard sysctl(), however only  routing sysctls are currently supported
@@ -519,10 +567,50 @@ osv_sysctl(int *name, u_int namelen, void *old_buf,
 	req.newfunc = sysctl_new_kernel;
 	req.lock    = REQ_UNWIRED;
 
-	error = sysctl_rtsock(NULL, name + 2, namelen - 2, &req);
-	if (oldlenp) {
-		*oldlenp = req.oldidx;
+	if (namelen < 2)
+		return -1;
+
+	switch(name[1]) {
+	case PF_INET:
+		error = sysctl_inet(NULL, name + 2, namelen - 2, &req);
+		if (oldlenp) {
+			*oldlenp = req.oldidx;
+		}
+		break;
+	case PF_ROUTE:
+		error = sysctl_rtsock(NULL, name + 2, namelen - 2, &req);
+		if (oldlenp) {
+			*oldlenp = req.oldidx;
+		}
+		break;
 	}
 
 	return (error);
 }
+
+int sysctl_inet(SYSCTL_HANDLER_ARGS)
+{
+	int *name = (int*) arg1;
+	u_int namelen = arg2;
+
+	if (namelen < 2)
+		return -1;
+
+	if (name[0] == IPPROTO_TCP) {
+		if (name[1] == TCPCTL_PCBLIST) {
+			return tcp_pcblist(NULL, name + 2, namelen - 2, req);
+		} else if (name[1] == TCPCTL_STATS) {
+			return sysctl_handle_opaque(NULL, &tcpstat, sizeof(tcpstat), req);
+		}
+	}
+	else if (name[0] == IPPROTO_UDP) {
+		if (name[1] == UDPCTL_PCBLIST) {
+			return udp_pcblist(NULL, name + 2, namelen - 2, req);
+		} else if (name[1] == UDPCTL_STATS) {
+			return sysctl_handle_opaque(NULL, &udpstat, sizeof(udpstat), req);
+		}
+	}
+
+	return -1;
+}
+

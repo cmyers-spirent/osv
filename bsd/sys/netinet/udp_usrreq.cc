@@ -41,7 +41,9 @@
 #include <bsd/porting/netport.h>
 #include <machine/in_cksum.h>
 
+#include <bsd/sys/sys/libkern.h>
 #include <bsd/sys/sys/param.h>
+#include <bsd/sys/sys/sysctl.h>
 #include <bsd/sys/sys/domain.h>
 #include <bsd/sys/sys/eventhandler.h>
 #include <bsd/sys/sys/mbuf.h>
@@ -69,6 +71,20 @@
 #endif
 #include <bsd/sys/netinet/udp.h>
 #include <bsd/sys/netinet/udp_var.h>
+
+
+#undef SYSCTL_VNET_INT
+#define SYSCTL_VNET_INT(...)
+#undef SYSCTL_INT
+#define SYSCTL_INT(...)
+#undef SYSCTL_UINT
+#define SYSCTL_UINT(...)
+#undef SYSCTL_ULONG
+#define SYSCTL_ULONG(...)
+#undef SYSCTL_PROC
+#define SYSCTL_PROC(...)
+#undef SYSCTL_STRUCT
+#define SYSCTL_STRUCT(...)
 
 /*
  * UDP protocol implementation.
@@ -644,8 +660,7 @@ udp_ctlinput(int cmd, struct bsd_sockaddr *sa, void *vip)
 }
 #endif /* INET */
 
-#if 0
-static int
+int
 udp_pcblist(SYSCTL_HANDLER_ARGS)
 {
 	int error, i, n;
@@ -670,15 +685,17 @@ udp_pcblist(SYSCTL_HANDLER_ARGS)
 	/*
 	 * OK, now we're committed to doing something.
 	 */
-	INP_INFO_RLOCK(&V_udbinfo);
+	INP_INFO_WLOCK(&V_udbinfo);
 	gencnt = V_udbinfo.ipi_gencnt;
 	n = V_udbinfo.ipi_count;
-	INP_INFO_RUNLOCK(&V_udbinfo);
+	INP_INFO_WUNLOCK(&V_udbinfo);
 
+#if 0
 	error = sysctl_wire_old_buffer(req, 2 * (sizeof xig)
 		+ n * sizeof(struct xinpcb));
 	if (error != 0)
 		return (error);
+#endif
 
 	xig.xig_len = sizeof xig;
 	xig.xig_count = n;
@@ -688,22 +705,21 @@ udp_pcblist(SYSCTL_HANDLER_ARGS)
 	if (error)
 		return (error);
 
-	inp_list = malloc(n * sizeof *inp_list, M_TEMP, M_WAITOK);
+	inp_list = (struct inpcb **) malloc(n * sizeof *inp_list);
 	if (inp_list == 0)
 		return (ENOMEM);
 
-	INP_INFO_RLOCK(&V_udbinfo);
+	INP_INFO_WLOCK(&V_udbinfo);
 	for (inp = LIST_FIRST(V_udbinfo.ipi_listhead), i = 0; inp && i < n;
 	     inp = LIST_NEXT(inp, inp_list)) {
 		INP_LOCK(inp);
-		if (inp->inp_gencnt <= gencnt &&
-		    cr_canseeinpcb(req->td->td_ucred, inp) == 0) {
+		if (inp->inp_gencnt <= gencnt) {
 			in_pcbref(inp);
 			inp_list[i++] = inp;
 		}
 		INP_UNLOCK(inp);
 	}
-	INP_INFO_RUNLOCK(&V_udbinfo);
+	INP_INFO_WUNLOCK(&V_udbinfo);
 	n = i;
 
 	error = 0;
@@ -716,7 +732,8 @@ udp_pcblist(SYSCTL_HANDLER_ARGS)
 			bzero(&xi, sizeof(xi));
 			xi.xi_len = sizeof xi;
 			/* XXX should avoid extra copy */
-			bcopy(inp, &xi.xi_inp, sizeof *inp);
+			// bcopy(inp, &xi.xi_inp, sizeof *inp);
+			inpcb_to_stats(inp, &xi.xi_inp);
 			if (inp->inp_socket)
 				sotoxsocket(inp->inp_socket, &xi.xi_socket);
 			xi.xi_inp.inp_gencnt = inp->inp_gencnt;
@@ -729,7 +746,7 @@ udp_pcblist(SYSCTL_HANDLER_ARGS)
 	for (i = 0; i < n; i++) {
 		inp = inp_list[i];
 		INP_LOCK(inp);
-		if (!in_pcbrele_rlocked(inp))
+		if (!in_pcbrele_locked(inp))
 			INP_UNLOCK(inp);
 	}
 	INP_INFO_WUNLOCK(&V_udbinfo);
@@ -741,21 +758,23 @@ udp_pcblist(SYSCTL_HANDLER_ARGS)
 		 * that something happened while we were processing this
 		 * request, and it might be necessary to retry.
 		 */
-		INP_INFO_RLOCK(&V_udbinfo);
+		INP_INFO_WLOCK(&V_udbinfo);
 		xig.xig_gen = V_udbinfo.ipi_gencnt;
 		xig.xig_sogen = so_gencnt;
 		xig.xig_count = V_udbinfo.ipi_count;
-		INP_INFO_RUNLOCK(&V_udbinfo);
+		INP_INFO_WUNLOCK(&V_udbinfo);
 		error = SYSCTL_OUT(req, &xig, sizeof xig);
 	}
-	free(inp_list, M_TEMP);
+	free(inp_list);
 	return (error);
 }
+
 
 SYSCTL_PROC(_net_inet_udp, UDPCTL_PCBLIST, pcblist,
     CTLTYPE_OPAQUE | CTLFLAG_RD, NULL, 0,
     udp_pcblist, "S,xinpcb", "List of active UDP sockets");
 
+#if 0
 #ifdef INET
 static int
 udp_getcred(SYSCTL_HANDLER_ARGS)

@@ -31,7 +31,7 @@ quiet = $(if $V, $1, @echo " $2"; $1)
 
 module: libtools.so lsroute.so ifconfig.so
 
-libtools.so: route_info.o network_interface.o
+libtools.so: route_info.o network_interface.o netstat.o
 	$(call quiet, $(CXX) $(CXXFLAGS) -shared -o libtools.so $^, LINK libtools.so)
 
 lsroute.so: lsroute.o libtools.so
@@ -41,5 +41,5 @@ ifconfig.so: ifconfig.o libtools.so
 	$(call quiet, $(CXX) $(CXXFLAGS) -shared -o $@ $^, LINK ifconfig.so)
 
 clean:
-	-rm -f libtools.so network_interface.o route_info.o ifconfig.o \
+	-rm -f libtools.so network_interface.o netstat.o route_info.o ifconfig.o \
 		ifconfig.so lsroute.o lsroute.so

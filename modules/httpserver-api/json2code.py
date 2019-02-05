@@ -26,7 +26,7 @@ config = parser.parse_args()
 
 
 valid_vars = {'string': 'std::string', 'int': 'int', 'double': 'double',
-             'float': 'float', 'long': 'long', 'boolean': 'bool', 'char': 'char',
+             'float': 'float', 'long': 'long', 'ulong': 'ulong', 'boolean': 'bool', 'char': 'char',
              'datetime': 'json::date_time'}
 
 current_file = ''

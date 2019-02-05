@@ -235,6 +235,20 @@ struct inpcb {
  * don't concern ourselves with that possibility.
  */
 
+struct inpcb_stats {
+	inp_gen_t       inp_gencnt;
+	u_char	inp_vflag;		/* (i) IP version flag (v4/v6) */
+	/* Local and foreign ports, local and foreign addr. */
+	struct	in_conninfo inp_inc = {};	/* (i/p) list for PCB's local port */
+};
+
+static inline void inpcb_to_stats(const struct inpcb *src, struct inpcb_stats *dst)
+{
+	dst->inp_gencnt = src->inp_gencnt;
+	dst->inp_vflag = src->inp_vflag;
+	dst->inp_inc = src->inp_inc;
+}
+
 /*
  * Interface exported to userland by various protocols which use inpcbs.  Hack
  * alert -- only define if struct xsocket is in scope.
@@ -242,7 +256,7 @@ struct inpcb {
 #ifdef _SYS_SOCKETVAR_H_
 struct	xinpcb {
 	size_t	xi_len;		/* length of this structure */
-	struct	inpcb xi_inp;
+	struct	inpcb_stats xi_inp;
 	struct	xsocket xi_socket;
 	u_quad_t	xi_alignment_hack;
 };

@@ -373,6 +373,16 @@ bool timer_task::is_pending()
     return _active_task != nullptr;
 }
 
+clock::time_point timer_task::get_timeout()
+{
+    assert(_mutex.owned());
+    if (!_active_task)
+        return clock::time_point();
+
+    return _active_task->get_timeout();
+}
+
+
 serial_timer_task::serial_timer_task(mutex& lock, callback_t&& callback)
     : _active(false)
     , _n_scheduled(0)
@@ -447,6 +457,12 @@ bool serial_timer_task::try_fire()
 
     _active = false;
     return true;
+}
+
+clock::time_point serial_timer_task::get_timeout()
+{
+    assert(_lock.owned());
+    return _task.get_timeout();
 }
 
 void run_later(callback_t&& callback)
