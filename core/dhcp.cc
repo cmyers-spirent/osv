@@ -690,7 +690,10 @@ namespace dhcp {
                  dm.get_interface_mtu() != 0 ? dm.get_interface_mtu() : ETHERMTU);
 
             if (dm.get_interface_mtu() != 0) {
-                osv::if_set_mtu(_ifp->if_xname, dm.get_interface_mtu());
+                int error = osv::if_set_mtu(_ifp->if_xname, dm.get_interface_mtu());
+                if (error != 0) {
+                    dhcp_i("Unable to set MTU on %s: %s", _ifp->if_xname, strerror(error));
+                }
             }
             osv::start_if(_ifp->if_xname,
                           dm.get_your_ip().to_string().c_str(),

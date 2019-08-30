@@ -30,6 +30,7 @@
 #include <osv/ioctl.h>
 #include <bsd/sys/net/ethernet.h>
 #include <bsd/sys/net/if_types.h>
+#include <bsd/sys/net/if.h>
 #include <bsd/sys/sys/param.h>
 
 #include <bsd/sys/net/ethernet.h>
@@ -93,6 +94,17 @@ static int if_ioctl(struct ifnet* ifp, u_long command, caddr_t data)
         break;
     case SIOCDELMULTI:
         net_d("SIOCDELMULTI");
+        break;
+    case SIOCSIFMTU:
+        {
+            net_d("SIOCSIFMTU");
+            struct bsd_ifreq *ifr = (struct bsd_ifreq *)data;
+            if (ifr->ifr_mtu < ETHERMIN || ifr->ifr_mtu > ETHERMTU_JUMBO) {
+                error = EINVAL;
+            } else {
+                ifp->if_mtu = ifr->ifr_mtu;
+            }
+        }
         break;
     default:
         net_d("redirecting to ether_ioctl()...");
