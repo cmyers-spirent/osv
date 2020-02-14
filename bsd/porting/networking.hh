@@ -26,9 +26,24 @@ namespace osv {
     int if_add_addr(std::string if_name, std::string ip_addr, std::string netmask);
     int if_del_addr(std::string if_name, std::string ip_addr, std::string netmask);
 
+    void dhcp_set_if_enable(const std::string &if_name, bool enable);
+    bool dhcp_get_if_enable(const std::string &if_name, bool &enable);
+
+    // Modules like cloud-init don't have easy way to find if INET6 is enabled
+    // so these functions are always present and stubbed as noop in
+    // networking.cc
+    void dhcp6_set_if_enable(const std::string &if_name, bool enable);
+    bool dhcp6_get_if_enable(const std::string &if_name, bool &enable);
+    void dhcp6_set_if_stateless(const std::string &if_name, bool enable);
+    bool dhcp6_get_if_enable(const std::string &if_name, bool &enable);
+
 #ifdef INET6
     int set_ipv6_accept_rtadv(bool enable);
     bool get_ipv6_accept_rtadv(void);
+    int set_ipv6_auto_linklocal(bool enable);
+    bool get_ipv6_auto_linklocal(void);
+    int send_ipv6_router_solicit(const std::string &ifname);
+    int send_ipv6_router_solicit();
 #endif
 }
 

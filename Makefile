@@ -961,6 +961,10 @@ objects += core/percpu.o
 objects += core/per-cpu-counter.o
 objects += core/percpu-worker.o
 objects += core/dhcp.o
+ifeq ($(conf-INET6), 1)
+objects += core/dhcp6.o
+objects += core/nd6radv.o
+endif
 objects += core/run.o
 objects += core/shutdown.o
 objects += core/version.o

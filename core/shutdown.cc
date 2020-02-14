@@ -3,6 +3,9 @@
 #include <osv/debug.hh>
 #include <osv/sched.hh>
 #include <osv/dhcp.hh>
+#ifdef INET6
+#include <osv/dhcp6.hh>
+#endif
 
 extern void vfs_exit(void);
 
@@ -10,6 +13,10 @@ namespace osv {
 
 void shutdown()
 {
+#ifdef INET6
+    dhcp6_release();
+#endif
+
     dhcp_release();
 
     // The vfs_exit() call below will forcibly unmount the filesystem. If any

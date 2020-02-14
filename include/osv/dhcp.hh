@@ -262,6 +262,9 @@ namespace dhcp {
         dhcp_worker();
         ~dhcp_worker();
 
+        void set_if_enable(const std::string &if_name, bool enable);
+        bool get_if_enable(const std::string &if_name, bool &enable);
+
         // Initializing a state per interface
         void init();
         // Send discover packets
@@ -277,6 +280,7 @@ namespace dhcp {
         sched::thread * _dhcp_thread;
 
         mutex _lock;
+        std::map<std::string, bool> _if_config; 
         std::list<struct mbuf*> _rx_packets;
         std::map<struct ifnet*, dhcp_interface_state*> _universe;
 

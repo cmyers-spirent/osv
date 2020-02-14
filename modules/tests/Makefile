@@ -128,6 +128,11 @@ boost-tests := tst-rename.so tst-vfs.so tst-libc-locking.so misc-fs-stress.so \
 	tst-rcu-hashtable.so tst-unordered-ring-mpsc.so \
 	tst-seek.so tst-tcp-v6.so
 
+ifeq ($(conf-INET6), 1)
+$(out)/tests/tst-dhcp6.o: COMMON += -I $(src)/bsd -I $(src)/bsd/$(ARCH)
+boost-tests += tst-dhcp6.so
+endif
+
 BOOSTLIBS=$(src)/external/$(ARCH)/misc.bin/usr/lib64
 $(boost-tests:%=$(out)/tests/%): LIBS += \
 	 $(BOOSTLIBS)/libboost_unit_test_framework.so \

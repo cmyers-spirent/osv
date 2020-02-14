@@ -1519,6 +1519,65 @@ m_getptr(struct mbuf *m, int loc, int *off)
 	return (NULL);
 }
 
+static void
+m_hexdump(const void * buf, unsigned int len)
+{
+#define LINE_LEN 128
+	unsigned int i, out, ofs;
+	const u8 *data = (const u8 *) buf;
+	char line[LINE_LEN];    /* space needed 8+16*3+3+16 == 75 */
+
+	ofs = 0;
+	while (ofs < len) {
+		/* format the line in the buffer, then use printf to output to screen */
+		out = snprintf(line, LINE_LEN, "%08X:", ofs);
+		for (i = 0; ((ofs + i) < len) && (i < 16); i++)
+			out += snprintf(line+out, LINE_LEN - out, " %02X", (data[ofs+i] & 0xff));
+		for(; i <= 16; i++)
+			out += snprintf(line+out, LINE_LEN - out, " | ");
+		for(i = 0; (ofs < len) && (i < 16); i++, ofs++) {
+			unsigned char c = data[ofs];
+			if ( (c < ' ') || (c > '~'))
+				c = '.';
+			out += snprintf(line+out, LINE_LEN - out, "%c", c);
+		}
+		printf("%s\n", line);
+	}
+}
+
+void
+m_print(const struct mbuf *m, int maxlen)
+{
+	int len;
+	int pdata;
+	const struct mbuf *m2;
+
+	if (m->m_hdr.mh_flags & M_PKTHDR)
+		len = m->M_dat.MH.MH_pkthdr.len;
+	else
+		len = -1;
+	m2 = m;
+	while (m2 != NULL && (len == -1 || len)) {
+		pdata = m2->m_hdr.mh_len;
+		if (maxlen != -1 && pdata > maxlen)
+			pdata = maxlen;
+		printf("mbuf: %p len: %d, next: %p, %b%s", m2, m2->m_hdr.mh_len,
+		    m2->m_hdr.mh_next, m2->m_hdr.mh_flags, "\20\20freelist\17skipfw"
+		    "\11proto5\10proto4\7proto3\6proto2\5proto1\4rdonly"
+		    "\3eor\2pkthdr\1ext", pdata ? "" : "\n");
+		if (pdata) {
+			//printf(", %*D\n", pdata, (u_char *)m2->m_data, "-");
+			printf("\n"); m_hexdump(m2->m_hdr.mh_data, pdata);
+		}
+		if (len != -1)
+			len -= m2->m_hdr.mh_len;
+		m2 = m2->m_hdr.mh_next;
+	}
+	if (len > 0)
+		printf("%d bytes unaccounted for.\n", len);
+	return;
+}
+
 u_int
 m_fixhdr(struct mbuf *m0)
 {

@@ -152,6 +152,8 @@ static int ip6_hopopts_input(u_int32_t *, u_int32_t *, struct mbuf **, int *);
 static struct mbuf *ip6_pullexthdr(struct mbuf *, size_t, int);
 #endif
 
+extern int dhcp6_hook_rx(struct mbuf* m);
+
 /*
  * IP6 initialization: fill in IP6 protocol switch table.
  * All protocols not implemented in kernel go to raw IP6 protocol handler.
@@ -622,6 +624,13 @@ ip6_input(struct mbuf *m)
 	 */
 	odst = ip6->ip6_dst;
 
+	/*
+	 * DHCPv6
+	 */
+	if (dhcp6_hook_rx(m)) {
+		return;
+	}
+	
 	/* Jump over all PFIL processing if hooks are not active. */
 	if (!PFIL_HOOKED(&V_inet6_pfil_hook))
 		goto passin;

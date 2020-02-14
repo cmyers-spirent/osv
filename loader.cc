@@ -38,6 +38,9 @@
 #include <bsd/porting/shrinker.h>
 #include <bsd/porting/route.h>
 #include <osv/dhcp.hh>
+#ifdef INET6
+#include <osv/dhcp6.hh>
+#endif
 #include <osv/version.h>
 #include <osv/run.hh>
 #include <osv/shutdown.hh>
@@ -419,6 +422,13 @@ void* do_main_thread(void *_main_args)
     if (!arch_setup_console(opt_console)) {
         abort("Unknown console:%s\n", opt_console.c_str());
     }
+
+#ifdef INET6
+    // Enable IPv6 StateLess Address AutoConfiguration (SLAAC)
+    osv::set_ipv6_accept_rtadv(true);
+    osv::set_ipv6_auto_linklocal(true);
+#endif
+
     arch_init_drivers();
     console::console_init();
     nulldev::nulldev_init();
@@ -449,13 +459,7 @@ void* do_main_thread(void *_main_args)
         }
     }
 
-#ifdef INET6
-    // Enable IPv6 StateLess Address AutoConfiguration (SLAAC)
-    osv::set_ipv6_accept_rtadv(true);
-#endif
-
     bool has_if = false;
-    bool use_dhcp = true;
 
     osv::for_each_if([&has_if] (std::string if_name) {
         if (if_name == "lo0")
@@ -474,19 +478,24 @@ void* do_main_thread(void *_main_args)
     });
     if (has_if) {
         if (opt_ip.size() > 0) {
-            use_dhcp = false;
-
             // Add interface IP addresses
             for (auto t : opt_ip) {
                 std::vector<std::string> tmp;
                 boost::split(tmp, t, boost::is_any_of(" ,/"), boost::token_compress_on);
                 if (tmp.size() != 3)
                     abort("incorrect parameter on --ip");
+                auto &if_name = tmp[0];
+                auto &addr = tmp[1];
+                auto &netmask = tmp[2];
+                printf("%s: %s %s\n", if_name.c_str(), addr.c_str(), netmask.c_str());
 
-                printf("%s: %s %s\n",tmp[0].c_str(),tmp[1].c_str(), tmp[2].c_str());
-
-                if (osv::if_add_addr(tmp[0], tmp[1], tmp[2]) != 0)
+                if (osv::if_add_addr(if_name, addr, netmask) != 0)
                     debug("Could not add IP address to interface.\n");
+                auto ip = boost::asio::ip::address::from_string(addr);
+                if (ip.is_v6())
+                    osv::dhcp6_set_if_enable(if_name, false);
+                else
+                    osv::dhcp_set_if_enable(if_name, false);
             }
             // Add default gateway routes
             // One default route is allowed for IPv4 and one for IPv6
@@ -577,14 +586,23 @@ void* do_main_thread(void *_main_args)
         run_init_commands(init_commands, bg, detached);
     }
 
-    // Skip DHCP if environment variable is set by /init/local commands
-    // This can be done on OSv because all applications share the same environment
-    if (getenv("USE_STATIC_IP")) {
-        use_dhcp = false;
-    }
+    if (has_if) {
+#ifdef INET6
+        osv::send_ipv6_router_solicit();
 
-    if (has_if && use_dhcp) {
+        // Disable DHCPv4 if not explicitly enabled/disabled and DHCPv6 is set
+        // Disable DHCPv6 if not explicitly enabled/disabled and DHCPv4 is set
+        // This allows for IPv4/IPv6 only configurations
+        dhcp6_check_config();
+
+        // If using IPv4 and IPv6 then don't know which one is going to be used
+        // so can't wait if one is never going to resolve.
+        dhcp_start(false);
+        dhcp6_start(false);
+#else
+        // If only using IPv4 then can wait forever to get IP
         dhcp_start(true);
+#endif
     }
 
     update_environment();

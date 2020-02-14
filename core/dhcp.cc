@@ -43,6 +43,19 @@ u8 requested_options[] = {
 
 const ip::address_v4 ipv4_zero = ip::address_v4::address_v4::from_string("0.0.0.0");
 
+namespace osv
+{
+    void dhcp_set_if_enable(const std::string &if_name, bool enable)
+    {
+        net_dhcp_worker.set_if_enable(if_name, enable);
+    }
+
+    bool dhcp_get_if_enable(const std::string &if_name, bool &enable)
+    {
+        return net_dhcp_worker.get_if_enable(if_name, enable);
+    }
+}
+
 // Returns whether we hooked the packet
 int dhcp_hook_rx(struct mbuf* m)
 {
@@ -757,15 +770,34 @@ namespace dhcp {
         // FIXME: free packets and states
     }
 
+    void dhcp_worker::set_if_enable(const std::string &if_name, bool enable)
+    {
+        _if_config[if_name] = enable;
+    }
+
+    bool dhcp_worker::get_if_enable(const std::string &if_name, bool &enable)
+    {
+        enable = true;  // Default is enabled
+        auto it = _if_config.find(if_name);
+        if (it == _if_config.end()) {
+            return false;
+        }
+        enable = it->second;
+        return true;
+    }
+
     void dhcp_worker::init()
     {
         struct ifnet *ifp = nullptr;
+        bool if_enable;
 
         // Allocate a state for each interface
         IFNET_RLOCK();
         TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
             if ( (!(ifp->if_flags & IFF_DYING)) &&
                  (!(ifp->if_flags & IFF_LOOPBACK)) ) {
+                if (get_if_enable(ifp->if_xname, if_enable) && if_enable == false)
+                    continue;
                 _universe.insert(std::make_pair(ifp,
                     new dhcp_interface_state(ifp)));
             }
@@ -839,8 +871,13 @@ namespace dhcp {
 
             auto it = _universe.find(m->M_dat.MH.MH_pkthdr.rcvif);
             if (it == _universe.end()) {
-                dhcp_e("Couldn't find interface state for DHCP packet!");
-                abort();
+                // This could happen if DHCP isn't enabled on the interface
+                bool enable;
+                get_if_enable(m->M_dat.MH.MH_pkthdr.rcvif->if_xname, enable);
+                if (enable)
+                    dhcp_e("Couldn't find interface state for DHCP packet!");
+                m_free(m);
+                continue;
             }
 
             it->second->process_packet(m);

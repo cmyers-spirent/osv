@@ -4,7 +4,6 @@
  * This work is open source software, licensed under the terms of the
  * BSD license as described in the LICENSE file in the top-level directory.
  */
-
 #include <bsd/porting/networking.hh>
 #include <bsd/porting/route.h>
 #include <osv/debug.hh>
@@ -254,7 +253,10 @@ void network_module::configure_physical_interface(const YAML::Node& node, networ
                 }
 
                 // Set environment variable telling loader not to start DHCP
-                setenv("USE_STATIC_IP", "True", 1);
+                if (ipv6)
+                    osv::dhcp6_set_if_enable(if_name, false);
+                else
+                    osv::dhcp_set_if_enable(if_name, false);
 
                 if (subnet["gateway"]) {
                     std::string gateway = subnet["gateway"].as<std::string>();
@@ -297,8 +299,17 @@ void network_module::configure_physical_interface(const YAML::Node& node, networ
                 }
             }
             else if (subnet_type == "dhcp") {
-                // TODO: Enable DHCP per interface
-                // dhcp_start(true)
+                osv::dhcp_set_if_enable(if_name, true);
+            }
+            else if (subnet_type == "dhcp6") {
+                osv::dhcp6_set_if_enable(if_name, true);
+                osv::dhcp6_set_if_stateless(if_name, false);
+            }
+            else if (subnet_type == "dhcp6-stateless") {
+                // Note:  cloud-init doesn't define this option
+                //        also this option isn't fully implemented yet
+                osv::dhcp6_set_if_enable(if_name, true);
+                osv::dhcp6_set_if_stateless(if_name, true);
             }
             else if (subnet_type == "nameserver") {
                 if (!subnet["address"])

@@ -299,6 +299,18 @@ bool get_ipv6_accept_rtadv(void)
     return (V_ip6_accept_rtadv != 0);
 }
 
+int set_ipv6_auto_linklocal(bool enable)
+{
+    V_ip6_auto_linklocal = enable ? 1 : 0;
+    return 0;
+}
+
+bool get_ipv6_auto_linklocal(void)
+{
+    return (V_ip6_auto_linklocal != 0);
+}
+
+
 #endif // INET6
 
 int if_add_addr(std::string if_name, std::string ip_addr, std::string mask_addr)
@@ -369,5 +381,26 @@ std::string if_ip(std::string if_name) {
     return inet_ntoa(((bsd_sockaddr_in*)&(addr.ifr_addr))->sin_addr);
 }
 
+#ifndef INET6
+// Actual implementation is defined in dhcp6.cc but these stubs
+// are defined when compiling without IPv6 enabled.
+void dhcp6_set_if_enable(const std::string &if_name, bool enable)
+{
+}
+
+bool dhcp6_get_if_enable(const std::string &if_name, bool &enable)
+{
+    return false; 
+}
+
+void dhcp6_set_if_stateless(const std::string &if_name, bool enable)
+{
+}
+
+bool dhcp6_get_if_enable(const std::string &if_name, bool &enable)
+{
+    return false;
+}
+#endif // INET6
 
 }
