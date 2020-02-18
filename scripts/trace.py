@@ -313,6 +313,7 @@ class Protocol:
     IPV6 = 10
     NATM = 11
     EPAIR = 12
+    NETLINK = 13
 
 def write_sample_to_pcap(sample, pcap_writer):
     assert(is_net_packet_sample(sample))
@@ -321,6 +322,10 @@ def write_sample_to_pcap(sample, pcap_writer):
     proto = int(sample.data[0])
     if proto == Protocol.ETHER:
         pcap_writer.writepkt(sample.data[1], ts=ts)
+    elif proto == Protocol.NETLINK:
+        # NETISR_NETLINK os is used for IPv6 internal control/messaging
+        # These packets shouldn't get written to pcap
+        return
     else:
         eth_types = {
             Protocol.IP: dpkt.ethernet.ETH_TYPE_IP,
