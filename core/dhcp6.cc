@@ -139,7 +139,6 @@ void dhcp6_check_config()
 void dhcp6_start(bool wait)
 {
     // Initialize the global DHCP worker
-    fprintf(stderr, "DHCPv6 start\n");
     net_dhcp6_worker.init();
     net_dhcp6_worker.start_thread();
     net_dhcp6_worker.start(wait);
@@ -1394,10 +1393,9 @@ namespace dhcp6 {
         // Allocate a state for each interface
         IFNET_RLOCK();
         TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
-            fprintf(stderr, "%s Checking %s\n", __FUNCTION__, ifp->if_xname);
             if (get_if_enable(ifp->if_xname, if_enable) && if_enable == false)
                 continue;
-            fprintf(stderr, "%s Creating interface on %s\n", __FUNCTION__, ifp->if_xname);
+            dhcp_i("%s Creating interface on %s", __FUNCTION__, ifp->if_xname);
  
             if ( (!(ifp->if_flags & IFF_DYING)) &&
                  (!(ifp->if_flags & IFF_LOOPBACK)) ) {
