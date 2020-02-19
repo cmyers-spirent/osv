@@ -32,13 +32,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-extern "C" {
-# define NI_NUMERICHOST 1
-    extern int getnameinfo(const struct bsd_sockaddr *__restrict __sa,
-                           socklen_t __salen, char *__restrict __host,
-                           socklen_t __hostlen, char *__restrict __serv,
-                           socklen_t __servlen, int __flags);
-}
+#define LINUX_AF_INET6 10
 
 #define ROUND_UP(n, m)                  ((((n) + (m - 1)) / (m)) * (m))
 
@@ -142,9 +136,6 @@ static char *
 ncpaddr_ntowa(const struct ncpaddr *addr)
 {
     static char res[NCP_ASCIIBUFFERSIZE];
-#ifndef NOINET6
-    struct bsd_sockaddr_in6 sin6;
-#endif
 
     switch (addr->ncpaddr_family) {
     case AF_INET:
@@ -153,18 +144,8 @@ ncpaddr_ntowa(const struct ncpaddr *addr)
 
 #ifndef NOINET6
     case AF_INET6:
-        memset(&sin6, '\0', sizeof(sin6));
-        sin6.sin6_len = sizeof(sin6);
-        sin6.sin6_family = AF_INET6;
-        sin6.sin6_addr = addr->ncpaddr_ip6addr;
-#if 0
-        adjust_linklocal(&sin6);
-#endif
-        if (getnameinfo((struct bsd_sockaddr *) &sin6, sizeof sin6, res,
-                        sizeof(res),
-                        NULL, 0, NI_NUMERICHOST) != 0)
+        if (inet_ntop(LINUX_AF_INET6, addr->ncpaddr_ip6addr.s6_addr, res, sizeof(res)) == NULL)
             break;
-
         return res;
 #endif
     }
