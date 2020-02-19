@@ -384,20 +384,20 @@ std::string if_ip(std::string if_name) {
 #ifndef INET6
 // Actual implementation is defined in dhcp6.cc but these stubs
 // are defined when compiling without IPv6 enabled.
-void dhcp6_set_if_enable(const std::string &if_name, bool enable)
+void dhcp6_set_if_enable(const std::string &if_name __unused2, bool enable __unused2)
 {
 }
 
-bool dhcp6_get_if_enable(const std::string &if_name, bool &enable)
+bool dhcp6_get_if_enable(const std::string &if_name __unused2, bool &enable __unused2)
 {
     return false; 
 }
 
-void dhcp6_set_if_stateless(const std::string &if_name, bool enable)
+void dhcp6_set_if_stateless(const std::string &if_name __unused2, bool enable __unused2)
 {
 }
 
-bool dhcp6_get_if_enable(const std::string &if_name, bool &enable)
+bool dhcp6_get_if_stateless(const std::string &if_name __unused2, bool &enable __unused2)
 {
     return false;
 }

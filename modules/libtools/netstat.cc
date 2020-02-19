@@ -101,14 +101,10 @@ static int foreach_protocol_pcb(int proto, int proto_ctl, pcb_stats_fun fun)
         return errno;
     }
 
-    sp = new char[needed];
-    if (sp == NULL) {
-        fprintf(stderr, "Failed to allocate sysctl buffer %zu bytes\n", needed);
-        return (1);
-    }
+    std::vector<char> sp_buffer(needed);
+    sp = &sp_buffer[0];
     if (osv_sysctl(mib, 4, sp, &needed, NULL, 0) < 0) {
         fprintf(stderr, "PCBLIST sysctl failed\n");
-        delete[] sp;
         return errno;
     }
     ep = sp + needed;
@@ -162,7 +158,6 @@ static int foreach_protocol_pcb(int proto, int proto_ctl, pcb_stats_fun fun)
         more = fun(stats);
     }
 
-    delete[] sp;
     return 0;
 }
 

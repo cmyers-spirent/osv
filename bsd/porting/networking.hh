@@ -35,7 +35,7 @@ namespace osv {
     void dhcp6_set_if_enable(const std::string &if_name, bool enable);
     bool dhcp6_get_if_enable(const std::string &if_name, bool &enable);
     void dhcp6_set_if_stateless(const std::string &if_name, bool enable);
-    bool dhcp6_get_if_enable(const std::string &if_name, bool &enable);
+    bool dhcp6_get_if_stateless(const std::string &if_name, bool &enable);
 
 #ifdef INET6
     int set_ipv6_accept_rtadv(bool enable);

@@ -2,7 +2,7 @@
  */
 
 #ifndef _NETINET_UDP_STAT_H_
-#define	_NETINET_UDP_STAT_H_
+#define _NETINET_UDP_STAT_H_
 
 struct udpstat {
 				/* input statistics: */
